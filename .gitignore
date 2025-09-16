@@ -1,6 +1,9 @@
 # JWN additions
 
 ## RDS object files
+*.qs
+
+## RDS object files
 *.rds
 
 ## h5 initial files
