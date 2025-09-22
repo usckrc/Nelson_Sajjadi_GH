@@ -1,0 +1,151 @@
+---
+title: "Fetal to Adult Kidney Markers"
+subtitle: "Identification of Novel Markers Driving Maturity of the Fetal Kidney"
+author: "Omid Sajjadi"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 2
+    toc_float: true
+    number_sections: no
+    theme: bootstrap
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# **Process**
+- Here I am going to analyze three datasets: single nucleus human fetal kidney, single nucleus human adult kidney, and single nucleus human in vitro organoids. 
+-My objective is to identify markers that are driving the fetal kidney transition from an fetal stage into a adult stage.
+-First Step: I will compare the adult vs fetal PEC DEG markers, this will give me an idea of what are the main differences.
+-Second Step: I will then plot a pseudotime using the fetal and adult datasets
+-Third Step: I will then plot a pseudotime using the fetal, organoid, and adult datasets
+-Fourth Step: 
+
+
+#### The following packages are on CRAN or Bioconductor and can be installed using the install.packages() function or BiocManager::install() function.
+
+```{r}
+if (!require("here")) {install.packages("here"); require("here")}
+
+Datasets <- "Datasets"
+Outputs <- "Outputs"
+
+if (!dir.exists(here(Datasets))) {dir.create(here(Datasets))}
+if (!dir.exists(here(Outputs))) {dir.create(here(Outputs))}
+```
+
+
+
+```{r load packages, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
+
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("Seurat")) {install.packages("Seurat"); require("Seurat")}
+if (!require("patchwork")) {install.packages("patchwork"); require("patchwork")}
+if (!require("cowplot")) {install.packages("cowplot"); require("cowplot")}
+if (!require("ggpubr")) {install.packages("ggpubr"); require("ggpubr")}
+if (!require("plotly")) {install.packages("plotly"); require("plotly")}
+if (!require("knitr")) {install.packages("knitr"); require("knitr")}
+if (!require("htmlwidgets")) {install.packages("htmlwidgets"); require("htmlwidgets")}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")} # for titying up data
+if (!require("RColorBrewer")) {install.packages("RColorBrewer"); require("RColorBrewer")} # for color brewer
+if (!require("sctransform")) {install.packages("sctransform"); require("sctransform")} # for data normalization
+if (!require("openxlsx")) {install.packages("openxlsx"); require("openxlsx")} # to save .xlsx files
+if (!require("SoupX")) {install.packages("SoupX"); require("SoupX")}
+if (!require("readxl")) {install.packages("readxl"); require("readxl")}
+if (!require("hdf5r")) {install.packages("hdf5r"); require("hdf5r")}
+if (!require("qs")) {install.packages("hdf5r"); require("qs")}
+if (!require("glmGamPoi")) {BiocManager::install('glmGamPoi'); require("glmGamPoi")} # for data normalization, sctransform
+if (!require("EnhancedVolcano")) {BiocManager::install('EnhancedVolcano'); require("EnhancedVolcano")} # volcano plot
+
+library(ggsankey)
+library(DoubletFinder)
+
+set.seed(12345)
+here()
+
+```
+
+# **Load Dataset**
+
+```{r sample name, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+# Set the Sample Name
+# This will be used to automate the addition of **metadata** to the Seurat object and to save output files (**DEG lists and Seurat Object**).
+
+sample_name1 <- "Fetal" # Replace with your sample name
+sample_name2 <- "Adult"
+
+```
+
+```{r}
+HFK_PC.seurat <- qread(here("Datasets","HFK.qs"))
+
+HAK_PC.seurat <- qread(here("Datasets","2021KPMP_healthy_PC.qs"))
+
+#HOK_PC.seurat <- qread("CAP_annotated-dataset.qs")
+```
+
+#STEP 1 - FETAL VS. ADULT DEG COMPARISION 
+
+```{r}
+# Add a column "group" with value "HFK"
+HFK_PC.seurat$MaturityLabel <- "HFK_PC"
+HAK_PC.seurat$MaturityLabel <- "HAK_PC"
+
+head((HFK_PC.seurat))
+head((HAK_PC.seurat))
+```
+
+```{r}
+combined_PC <- merge(HFK_PC.seurat, y = HAK_PC.seurat)
+
+combined_PC <- NormalizeData(combined_PC)
+combined_PC <- FindVariableFeatures(combined_PC)
+
+Idents(combined) <- "MaturityLabel"
+rm(HAK_PC.seurat, HFK_PC.seurat, Datasets, Outputs)
+# Run DEG (HFK vs HAK)
+deg_results <- FindMarkers(combined, ident.1 = "HFK", ident.2 = "HAK", min.pct = 0.1, logfc.threshold = 0.75)
+
+head(deg_results)
+
+
+#1-I have to find the 100 DEG for both HFK and HAK separately
+#2-I have to merge the integrate 
+#3-plot pseudotime
+#4-organize dataset and download
+#5-next steps will be done using Python
+
+```
+
+```{r}
+# Merge into one object
+combined_PC <- merge(HFK_PC.seurat, y = HAK_PC.seurat, add.cell.ids = c("HFK", "HAK"))
+
+# Normalize & find variable features (if not already processed)
+combined_PC <- NormalizeData(combined_PC)
+combined_PC <- FindVariableFeatures(combined_PC)
+
+# Set the grouping variable
+Idents(combined) <- "group"
+
+# Run DEG (HFK vs HAK)
+deg_results <- FindMarkers(combined, ident.1 = "HFK", ident.2 = "HAK", min.pct = 0.1, logfc.threshold = 0.75)
+
+head(deg_results)
+```
+
+# Session Info
+
+```{r session info, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+sessionInfo()
+
+```
+
