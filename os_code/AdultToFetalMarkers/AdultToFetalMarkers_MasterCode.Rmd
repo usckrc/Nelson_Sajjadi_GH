@@ -59,7 +59,8 @@ if (!require("openxlsx")) {install.packages("openxlsx"); require("openxlsx")} # 
 if (!require("SoupX")) {install.packages("SoupX"); require("SoupX")}
 if (!require("readxl")) {install.packages("readxl"); require("readxl")}
 if (!require("hdf5r")) {install.packages("hdf5r"); require("hdf5r")}
-if (!require("qs")) {install.packages("hdf5r"); require("qs")}
+if (!require("qs")) {install.packages("qs"); require("qs")}
+if (!require("slingshot")) {install.packages("slingshot"); require("slingshot")}
 if (!require("glmGamPoi")) {BiocManager::install('glmGamPoi'); require("glmGamPoi")} # for data normalization, sctransform
 if (!require("EnhancedVolcano")) {BiocManager::install('EnhancedVolcano'); require("EnhancedVolcano")} # volcano plot
 
@@ -88,6 +89,7 @@ HFK_PC.seurat <- qread(here("Datasets","HFK.qs"))
 
 HAK_PC.seurat <- qread(here("Datasets","2021KPMP_healthy_PC.qs"))
 
+DimPlot(HAK_PC.seurat)
 #HOK_PC.seurat <- qread("CAP_annotated-dataset.qs")
 ```
 
@@ -103,20 +105,18 @@ head((HAK_PC.seurat))
 ```
 
 ```{r}
-combined_PC <- merge(HFK_PC.seurat, y = HAK_PC.seurat)
+# combined_PC <- merge(HFK_PC.seurat, y = HAK_PC.seurat)
+# combined_PC <- NormalizeData(combined_PC)
+# combined_PC <- FindVariableFeatures(combined_PC)
+#qsave(combined_PC,file = "seurat.combined_PC.qs")
 
-combined_PC <- NormalizeData(combined_PC)
-combined_PC <- FindVariableFeatures(combined_PC)
-
-Idents(combined) <- "MaturityLabel"
-rm(HAK_PC.seurat, HFK_PC.seurat, Datasets, Outputs)
-# Run DEG (HFK vs HAK)
-deg_results <- FindMarkers(combined, ident.1 = "HFK", ident.2 = "HAK", min.pct = 0.1, logfc.threshold = 0.75)
-
-head(deg_results)
+combined_PC <- qread(here("Datasets", "seurat.combined_PC.qs"))
+Idents(combined_PC) <- "MaturityLabel"
+head(combined_PC)
+#rm(HAK_PC.seurat, HFK_PC.seurat, Datasets, Outputs)
 
 
-#1-I have to find the 100 DEG for both HFK and HAK separately
+#1-I have to find the 100 DEG for both HFK and HAK separately DONE
 #2-I have to merge the integrate 
 #3-plot pseudotime
 #4-organize dataset and download
@@ -124,21 +124,127 @@ head(deg_results)
 
 ```
 
+
+
 ```{r}
-# Merge into one object
-combined_PC <- merge(HFK_PC.seurat, y = HAK_PC.seurat, add.cell.ids = c("HFK", "HAK"))
-
-# Normalize & find variable features (if not already processed)
-combined_PC <- NormalizeData(combined_PC)
-combined_PC <- FindVariableFeatures(combined_PC)
-
-# Set the grouping variable
-Idents(combined) <- "group"
-
 # Run DEG (HFK vs HAK)
-deg_results <- FindMarkers(combined, ident.1 = "HFK", ident.2 = "HAK", min.pct = 0.1, logfc.threshold = 0.75)
+deg_results <- FindMarkers(combined_PC, ident.1 = "HFK_PC", ident.2 = "HAK_PC", min.pct = 0.5, logfc.threshold = 0.75)
 
-head(deg_results)
+# Add gene names as a column
+deg_results$gene <- rownames(deg_results)
+
+# Genes up in HFK (positive log2FC)
+deg_HFK <- deg_results[deg_results$avg_log2FC > 0, ]
+deg_HFK_top100 <- head(deg_HFK[order(-deg_HFK$avg_log2FC), ], 100)
+
+# Genes up in HAK (negative log2FC)
+deg_HAK <- deg_results[deg_results$avg_log2FC < 0, ]
+deg_HAK_top100 <- head(deg_HAK[order(deg_HAK$avg_log2FC), ], 100)
+
+# Save as CSV
+write.csv(deg_HFK_top100, here("Outputs","HFK_top100_DEG.csv"), row.names = FALSE)
+write.csv(deg_HAK_top100, here("Outputs","HAK_top100_DEG.csv"), row.names = FALSE)
+
+```
+
+
+```{r}
+# Up in HFK = positive log2FC
+deg_HFK_top10 <- head(deg_results[deg_results$avg_log2FC > 0, ][order(-deg_results$avg_log2FC[deg_results$avg_log2FC > 0]), ], 10)
+
+# Up in HAK = negative log2FC
+deg_HAK_only <- deg_results[deg_results$avg_log2FC < 0, ]
+deg_HAK_top10 <- head(deg_HAK_only[order(deg_HAK_only$avg_log2FC), ], 10)  # most negative first
+
+genes_HFK <- deg_HFK_top10$gene
+genes_HAK <- deg_HAK_top10$gene
+genes_all <- unique(c(genes_HFK, genes_HAK))
+
+# If not already: Idents(combined_PC) <- "group" (or whatever column stores HFK_PC/HAK_PC)
+# Idents(combined_PC) <- "group"
+Idents(combined_PC) <- factor(Idents(combined_PC), levels = c("HFK_PC","HAK_PC"))
+
+
+# Optionally scale for a nicer heatmap (RNA assay assumed)
+DefaultAssay(combined_PC) <- "RNA"
+combined_PC <- ScaleData(combined_PC, features = genes_all, verbose = FALSE)
+
+cells_2groups <- WhichCells(combined_PC, idents = c("HFK_PC","HAK_PC"))
+pdf("heatmap_top10_per_group.pdf", width = 8, height = 10)
+DoHeatmap(combined_PC, features = genes_all, cells = cells_2groups, group.by = NULL) + 
+  ggplot2::labs(title = "Top markers (HFK↑ vs HAK↑)")
+dev.off()
+
+library(patchwork)
+
+# HFK-up genes
+p1 <- VlnPlot(combined_PC, features = genes_HFK, pt.size = 0, ncol = 2) +
+  ggplot2::labs(title = "HFK_PC upregulated (top 10)")
+
+# HAK-up genes
+p2 <- VlnPlot(combined_PC, features = genes_HAK, pt.size = 0, ncol = 2) +
+  ggplot2::labs(title = "HAK_PC upregulated (top 10)")
+
+pdf("violin_top10_per_group.pdf", width = 12, height = 16)
+print(p1 / p2)
+dev.off()
+```
+
+
+```{r}
+# Install if needed
+# install.packages(c("BiocManager"))
+# BiocManager::install(c("slingshot","SingleCellExperiment"))
+
+library(Seurat)
+library(SingleCellExperiment)
+library(slingshot)
+
+# 0) Make sure identities separate the two groups
+Idents(combined_PC) <- "group"   # or whatever column stores HFK_PC / HAK_PC
+levels(combined_PC)
+# expected: "HFK_PC" and "HAK_PC"
+
+# 1) Ensure you have a UMAP (skip if already present)
+if (!"umap" %in% names(combined_PC@reductions)) {
+  DefaultAssay(combined_PC) <- "RNA"
+  combined_PC <- NormalizeData(combined_PC)
+  combined_PC <- FindVariableFeatures(combined_PC)
+  combined_PC <- ScaleData(combined_PC)
+  combined_PC <- RunPCA(combined_PC, npcs = 50)
+  combined_PC <- RunUMAP(combined_PC, dims = 1:30)
+}
+
+# 2) Convert to SingleCellExperiment
+sce <- as.SingleCellExperiment(combined_PC)
+
+# Provide cluster labels; if you don't have clusters, use the group labels
+# e.g., cluster = Idents(combined_PC) (HFK_PC vs HAK_PC) works fine for a simple 1-lineage
+colLabels(combined_PC) <- Idents(combined_PC)
+
+# 3) Run slingshot using UMAP embedding
+# Start at HFK, end at HAK
+combined_PC <- slingshot(
+  sce,
+  clusterLabels = "colLabels",
+  reducedDim   = "UMAP",
+  start.clus   = "HFK_PC",
+  end.clus     = "HAK_PC"
+)
+
+# 4) Extract pseudotime (first lineage) and add back to Seurat
+pt <- colData(combined_PC)$slingPseudotime_1
+combined_PC$slingshot_pt <- as.numeric(pt)
+
+# 5) Plot pseudotime on UMAP and save
+p <- FeaturePlot(
+  combined_PC,
+  features = "slingshot_pt",
+  reduction = "umap"
+) + ggplot2::labs(title = "Pseudotime (HFK → HAK)")
+ggplot2::ggsave("pseudotime_slingshot_umap.pdf", p, width = 7, height = 5)
+
+# Optional: smooth expression of genes along pseudotime later with tradeSeq
 ```
 
 # Session Info
