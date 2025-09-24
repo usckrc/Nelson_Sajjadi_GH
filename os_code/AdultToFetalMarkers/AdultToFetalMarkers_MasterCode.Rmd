@@ -72,63 +72,156 @@ here()
 
 ```
 
-# **Load Dataset**
-
-```{r sample name, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
-
-# Set the Sample Name
-# This will be used to automate the addition of **metadata** to the Seurat object and to save output files (**DEG lists and Seurat Object**).
-
-sample_name1 <- "Fetal" # Replace with your sample name
-sample_name2 <- "Adult"
-
-```
-
-```{r}
-HFK_PC.seurat <- qread(here("Datasets","HFK.qs"))
-
-HAK_PC.seurat <- qread(here("Datasets","2021KPMP_healthy_PC.qs"))
-
-DimPlot(HAK_PC.seurat)
-#HOK_PC.seurat <- qread("CAP_annotated-dataset.qs")
-```
-
-#STEP 1 - FETAL VS. ADULT DEG COMPARISION 
-
-```{r}
-# Add a column "group" with value "HFK"
-HFK_PC.seurat$MaturityLabel <- "HFK_PC"
-HAK_PC.seurat$MaturityLabel <- "HAK_PC"
-
-head((HFK_PC.seurat))
-head((HAK_PC.seurat))
-```
-
-```{r}
-# combined_PC <- merge(HFK_PC.seurat, y = HAK_PC.seurat)
-# combined_PC <- NormalizeData(combined_PC)
-# combined_PC <- FindVariableFeatures(combined_PC)
-#qsave(combined_PC,file = "seurat.combined_PC.qs")
-
-combined_PC <- qread(here("Datasets", "seurat.combined_PC.qs"))
-Idents(combined_PC) <- "MaturityLabel"
-head(combined_PC)
-#rm(HAK_PC.seurat, HFK_PC.seurat, Datasets, Outputs)
 
 
-#1-I have to find the 100 DEG for both HFK and HAK separately DONE
-#2-I have to merge the integrate 
-#3-plot pseudotime
-#4-organize dataset and download
-#5-next steps will be done using Python
-
-```
 
 
 
 ```{r}
+
+# 1) Load your Seurat objects from .qs
+HFK_PC <- qread(here("os_code","AdultToFetalMarkers","Datasets","HFK_PC.qs"))
+HAK_PC <- qread(here("os_code","AdultToFetalMarkers","Datasets","2021KPMP_healthy_PC.qs"))
+
+
+DimPlot(HAK_PC)
+DimPlot(HFK_PC)
+
+HFK_PC$MaturityLabel <- "HFK_PC"
+HAK_PC$MaturityLabel <- "HAK_PC"
+
+# 2) Sanity: make sure they both use the same assay name (typically "RNA")
+DefaultAssay(HFK_PC) <- "RNA"
+DefaultAssay(HAK_PC) <- "RNA"
+
+# 3) Make cell names unique and add a batch label
+HFK_PC <- RenameCells(HFK_PC, add.cell.id = "HFK_PC")
+HAK_PC <- RenameCells(HAK_PC, add.cell.id = "HAK_PC")
+
+HFK_PC$batch <- "HFK_PC"
+HAK_PC$batch <- "HAK_PC"
+
+# (Optional but recommended) Keep overlapping features to avoid feature-mismatch noise
+common_features <- intersect(rownames(HFK_PC), rownames(HAK_PC))
+HFK_PC <- subset(HFK_PC, features = common_features)
+HAK_PC <- subset(HAK_PC, features = common_features)
+
+# 4) Merge into ONE object
+obj <- merge(HFK_PC, y = HAK_PC)
+DefaultAssay(obj) <- "RNA"
+
+# 5) If the merged assay *already* contains split layers like counts.1/data.2, JOIN first
+if (length(Layers(obj[["RNA"]])) > 3 || any(grepl("\\.\\d+$", Layers(obj[["RNA"]])))) {
+  message("Joining pre-existing per-batch layers in merged object...")
+  obj[["RNA"]] <- JoinLayers(obj[["RNA"]])
+}
+
+# 6) Now split exactly once by your batch metadata, and only for raw/normalized matrices
+obj[["RNA"]] <- split(
+  obj[["RNA"]],
+  f      = obj$batch,
+  layers = c("counts","data")
+)
+
+##############SANITY CHECK###############
+Layers(obj[["RNA"]])       # Expect something like: "HFK_PC", "HAK_PC"
+sort(unique(obj$batch))    # Compare to unique batches
+table(obj$batch)           # Per-batch counts from metadata
+sapply(Layers(obj[["RNA"]]), function(L) {
+  ncol(GetAssayData(obj, assay = "RNA", layer = L))  # columns = cells
+})
+#########################################################
+
+DefaultAssay(obj) <- "RNA"
+
+# 7) Run a quick unintegrated PCA/UMAP (optional, for comparison)
+obj <- NormalizeData(obj)
+obj <- FindVariableFeatures(obj)
+obj <- ScaleData(obj)
+obj <- RunPCA(obj)
+obj <- FindNeighbors(obj, dims = 1:30, reduction = "pca")
+obj <- FindClusters(obj, resolution = 0.6, cluster.name = "unintegrated_clusters")
+obj <- RunUMAP(obj, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated")
+
+p_unint <- DimPlot(obj, reduction = "umap.unintegrated", group.by = c("batch", "unintegrated_clusters"))
+print(p_unint)
+
+# 8) INTEGRATE the layers (CCA), producing a shared low-dim space
+obj <- IntegrateLayers(
+  object        = obj,
+  method        = CCAIntegration,
+  orig.reduction= "pca",
+  new.reduction = "integrated.cca",
+  verbose       = FALSE
+)
+
+# 9) Re-join layers (so downstream functions that expect a single matrix behave as usual)
+obj[["RNA"]] <- JoinLayers(obj[["RNA"]])
+rm(HFK_PC, HAK_PC)
+
+# 10) Neighbors/Clusters/UMAP on the integrated space
+obj <- FindNeighbors(obj, reduction = "integrated.cca", dims = 1:30)
+obj <- FindClusters(obj, resolution = 4)
+obj <- RunUMAP(obj, dims = 1:30, reduction = "integrated.cca")
+
+# 11) Plots
+p_unint <- DimPlot(obj, reduction = "umap.unintegrated", group.by = c("batch", "unintegrated_clusters"))
+print(p_unint)
+
+p_int1 <- DimPlot(obj, reduction = "umap", group.by = "batch")
+p_int2 <- DimPlot(obj, reduction = "umap", group.by = "seurat_clusters", label = TRUE)
+print(p_int1 + p_int2)
+
+```
+
+```{r}
+#QC
+head(obj)
+tail(obj)
+
+
+#save the obj -> this is the integrated PC data from HFK and HAK
+qsave(obj, "combined_PC_integrated.qs")
+```
+
+
+```{r}
+
+
+# 1) Load your Seurat objects from .qs
+HFK_PC <- qread(here("os_code","AdultToFetalMarkers","Datasets","HFK_PC.qs"))
+HAK_PC <- qread(here("os_code","AdultToFetalMarkers","Datasets","2021KPMP_healthy_PC.qs"))
+
+
+DimPlot(HAK_PC)
+DimPlot(HFK_PC)
+
+HFK_PC$MaturityLabel <- "HFK_PC"
+HAK_PC$MaturityLabel <- "HAK_PC"
+
+# 2) Sanity: make sure they both use the same assay name (typically "RNA")
+DefaultAssay(HFK_PC) <- "RNA"
+DefaultAssay(HAK_PC) <- "RNA"
+
+# 3) Make cell names unique and add a batch label
+HFK_PC <- RenameCells(HFK_PC, add.cell.id = "HFK_PC")
+HAK_PC <- RenameCells(HAK_PC, add.cell.id = "HAK_PC")
+
+HFK_PC$batch <- "HFK_PC"
+HAK_PC$batch <- "HAK_PC"
+
+# (Optional but recommended) Keep overlapping features to avoid feature-mismatch noise
+common_features <- intersect(rownames(HFK_PC), rownames(HAK_PC))
+HFK_PC <- subset(HFK_PC, features = common_features)
+HAK_PC <- subset(HAK_PC, features = common_features)
+
+# 4) Merge into ONE object
+combined_PC <- merge(HFK_PC, y = HAK_PC)
+Idents(combined_PC) <- combined_PC$MaturityLabel
+DefaultAssay(combined_PC) <- "RNA"
 # Run DEG (HFK vs HAK)
 deg_results <- FindMarkers(combined_PC, ident.1 = "HFK_PC", ident.2 = "HAK_PC", min.pct = 0.5, logfc.threshold = 0.75)
+
 
 # Add gene names as a column
 deg_results$gene <- rownames(deg_results)
@@ -142,110 +235,104 @@ deg_HAK <- deg_results[deg_results$avg_log2FC < 0, ]
 deg_HAK_top100 <- head(deg_HAK[order(deg_HAK$avg_log2FC), ], 100)
 
 # Save as CSV
-write.csv(deg_HFK_top100, here("Outputs","HFK_top100_DEG.csv"), row.names = FALSE)
-write.csv(deg_HAK_top100, here("Outputs","HAK_top100_DEG.csv"), row.names = FALSE)
+write.csv(deg_HFK_top100, here("os_code","AdultToFetalMarkers","Outputs","HFK_top100_DEG.csv"), row.names = FALSE)
+write.csv(deg_HAK_top100, here("os_code","AdultToFetalMarkers","Outputs","HAK_top100_DEG.csv"), row.names = FALSE)
 
 ```
 
 
-```{r}
-# Up in HFK = positive log2FC
-deg_HFK_top10 <- head(deg_results[deg_results$avg_log2FC > 0, ][order(-deg_results$avg_log2FC[deg_results$avg_log2FC > 0]), ], 10)
-
-# Up in HAK = negative log2FC
-deg_HAK_only <- deg_results[deg_results$avg_log2FC < 0, ]
-deg_HAK_top10 <- head(deg_HAK_only[order(deg_HAK_only$avg_log2FC), ], 10)  # most negative first
-
-genes_HFK <- deg_HFK_top10$gene
-genes_HAK <- deg_HAK_top10$gene
-genes_all <- unique(c(genes_HFK, genes_HAK))
-
-# If not already: Idents(combined_PC) <- "group" (or whatever column stores HFK_PC/HAK_PC)
-# Idents(combined_PC) <- "group"
-Idents(combined_PC) <- factor(Idents(combined_PC), levels = c("HFK_PC","HAK_PC"))
-
-
-# Optionally scale for a nicer heatmap (RNA assay assumed)
-DefaultAssay(combined_PC) <- "RNA"
-combined_PC <- ScaleData(combined_PC, features = genes_all, verbose = FALSE)
-
-cells_2groups <- WhichCells(combined_PC, idents = c("HFK_PC","HAK_PC"))
-pdf("heatmap_top10_per_group.pdf", width = 8, height = 10)
-DoHeatmap(combined_PC, features = genes_all, cells = cells_2groups, group.by = NULL) + 
-  ggplot2::labs(title = "Top markers (HFK↑ vs HAK↑)")
-dev.off()
-
-library(patchwork)
-
-# HFK-up genes
-p1 <- VlnPlot(combined_PC, features = genes_HFK, pt.size = 0, ncol = 2) +
-  ggplot2::labs(title = "HFK_PC upregulated (top 10)")
-
-# HAK-up genes
-p2 <- VlnPlot(combined_PC, features = genes_HAK, pt.size = 0, ncol = 2) +
-  ggplot2::labs(title = "HAK_PC upregulated (top 10)")
-
-pdf("violin_top10_per_group.pdf", width = 12, height = 16)
-print(p1 / p2)
-dev.off()
-```
 
 
 ```{r}
-# Install if needed
-# install.packages(c("BiocManager"))
-# BiocManager::install(c("slingshot","SingleCellExperiment"))
-
-library(Seurat)
 library(SingleCellExperiment)
+
+# Convert to SingleCellExperiment
+DefaultAssay(obj) <- "RNA"
+obj@assays <- obj@assays["RNA"]
+
+combined_sce <- as.SingleCellExperiment(obj)
+
+# Use integrated UMAP reduction (run via `RunUMAP(..., reduction = "integrated.cca")`)
+# This assumes you’ve already done: RunUMAP(obj, reduction = "integrated.cca", ...)
+reducedDims(combined_sce)$UMAP <- Embeddings(obj, "umap")  # "umap" uses integrated.cca by default
+
+
+# Tabulate how clusters break down across batches
+table(obj$seurat_clusters, obj$batch)
+
+```
+
+
+```{r}
 library(slingshot)
 
-# 0) Make sure identities separate the two groups
-Idents(combined_PC) <- "group"   # or whatever column stores HFK_PC / HAK_PC
-levels(combined_PC)
-# expected: "HFK_PC" and "HAK_PC"
+# Run Slingshot
+combined_sce <- slingshot(combined_sce, 
+                          clusterLabels = 'seurat_clusters', 
+                          reducedDim = 'UMAP', 
+                          start.clus = c("25",'5',"12"))  # replace '0' with actual fetal cluster if known
 
-# 1) Ensure you have a UMAP (skip if already present)
-if (!"umap" %in% names(combined_PC@reductions)) {
-  DefaultAssay(combined_PC) <- "RNA"
-  combined_PC <- NormalizeData(combined_PC)
-  combined_PC <- FindVariableFeatures(combined_PC)
-  combined_PC <- ScaleData(combined_PC)
-  combined_PC <- RunPCA(combined_PC, npcs = 50)
-  combined_PC <- RunUMAP(combined_PC, dims = 1:30)
-}
+```
 
-# 2) Convert to SingleCellExperiment
-sce <- as.SingleCellExperiment(combined_PC)
 
-# Provide cluster labels; if you don't have clusters, use the group labels
-# e.g., cluster = Idents(combined_PC) (HFK_PC vs HAK_PC) works fine for a simple 1-lineage
-colLabels(combined_PC) <- Idents(combined_PC)
 
-# 3) Run slingshot using UMAP embedding
-# Start at HFK, end at HAK
-combined_PC <- slingshot(
-  sce,
-  clusterLabels = "colLabels",
-  reducedDim   = "UMAP",
-  start.clus   = "HFK_PC",
-  end.clus     = "HAK_PC"
+```{r}
+library(RColorBrewer)
+
+# Get pseudotime values
+pt <- slingshot::slingPseudotime(combined_sce)[, 1]  # pseudotime along lineage 1
+
+# Define color palette
+colors <- colorRampPalette(brewer.pal(11, "Spectral"))(100)
+
+# Plot UMAP colored by pseudotime
+plot(
+  reducedDims(combined_sce)$UMAP,
+  col = colors[cut(pt, breaks = 100)],
+  pch = 16, asp = 1,
+  main = "Slingshot Pseudotime"
 )
 
-# 4) Extract pseudotime (first lineage) and add back to Seurat
-pt <- colData(combined_PC)$slingPseudotime_1
-combined_PC$slingshot_pt <- as.numeric(pt)
+# Add trajectory curves
+lines(SlingshotDataSet(combined_sce), lwd = 2, col = 'black')
 
-# 5) Plot pseudotime on UMAP and save
-p <- FeaturePlot(
-  combined_PC,
-  features = "slingshot_pt",
-  reduction = "umap"
-) + ggplot2::labs(title = "Pseudotime (HFK → HAK)")
-ggplot2::ggsave("pseudotime_slingshot_umap.pdf", p, width = 7, height = 5)
-
-# Optional: smooth expression of genes along pseudotime later with tradeSeq
 ```
+
+
+```{r}
+umap_coords <- reducedDims(combined_sce)$UMAP
+clusters <- combined_sce$seurat_clusters
+
+# Plot with cluster labels
+plot(
+  umap_coords,
+  col = colors[cut(pt, breaks = 100)],
+  pch = 16, asp = 1,
+  main = "Slingshot Pseudotime with Clusters"
+)
+text(
+  x = tapply(umap_coords[, 1], clusters, mean),
+  y = tapply(umap_coords[, 2], clusters, mean),
+  labels = names(table(clusters)),
+  cex = 0.8, font = 2
+)
+lines(SlingshotDataSet(combined_sce), lwd = 2, col = 'black')
+
+```
+```{r}
+pdf("slingshot_pseudotime_umap.pdf", width = 7, height = 6)
+plot(
+  reducedDims(combined_sce)$UMAP,
+  col = colors[cut(pt, breaks = 100)],
+  pch = 16, asp = 1,
+  main = "Slingshot Pseudotime"
+)
+lines(SlingshotDataSet(combined_sce), lwd = 2, col = 'black')
+dev.off()
+
+```
+
+
 
 # Session Info
 
