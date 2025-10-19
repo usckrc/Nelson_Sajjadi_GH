@@ -41,6 +41,13 @@ knitr::opts_chunk$set(echo = TRUE)
     - Expect fewer genes per nucleus (because only nuclear RNA is captured), but potentially broader representation of cell types.
 
 
+# **Conclusion**
+
+
+
+# **Future Work**
+
+
 ```{r create folders, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 
 if (!require("here")) {install.packages("here"); require("here")}
@@ -227,13 +234,13 @@ Filtering parameters used: nFeature_RNA > 2100 & nFeature_RNA < 7500 & nCount_RN
 
 ### 03 High-Dimentional Superclustering
 
-```{r set resolution, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+```{r set resolution, echo=TRUE, error=FALSE, message=FALSE, warning=FALSE}
 
-resolution_value <- 9.0 # Set the resolution value for clustering
+resolution_value <- 2.0 # Set the resolution value for clustering
 
 ```
 
-```{r initial clustering, echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center', fig.align='center'}
+```{r initial clustering, echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
 
 # Pre-process standard workflow
 seurat.obj.f <- NormalizeData(object = seurat.obj.f)
@@ -303,7 +310,7 @@ saveWorkbook(wb, here("Outputs", paste0(date, "_", sample_name, "_FindAllMarkers
 
 
 
-```{r first mdd, error=FALSE, fig.height=11, fig.width=20, message=FALSE, warning=FALSE, include=FALSE}
+```{r first mdd, echo=TRUE, error=FALSE, fig.height=11, fig.width=20, message=FALSE, warning=FALSE}
 # Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
 markers.to.plot1 <- c("EYA1",    # NPC
                       "SIX2",    # NPC
@@ -412,11 +419,67 @@ markers.to.plot1 <- c("EYA1",    # NPC
                       
 )
 
-
+markers.to.plot4 <- c("EYA1",    # NPC
+                      "SIX2",    # NPC
+                      "CITED1",  # NPC
+                      
+                      "NPHS1",   # PODO
+                      "NPHS2",   # PODO
+                      "PODXL",   # PODO
+                      "CLIC5",   # PODO
+                      "MAFBF",   # PODO
+                      "PTPRO",   # PODO
+                      
+                      "CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                      "SLC22A6", # PT
+                      "SLC22A8", # PT
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                      "SLC5A1",  # PT
+                      "SLC5A2",  # PT
+                      "ABCC2",   # PT
+                      "ABCG2",   # PT
+                      "SLC47A1", # PT
+                     
+            
+                      "TMEM52B", # CNT, DT
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      "RHBG",    # DT
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      
+                      "CA2",       # IC
+                     
+                      
+                      "RET",     # UPC
+                      "WNT11",   # UPC
+               
+                      
+                      "PDGFRA", # Int
+                      "PDGFRB", # Int
+                      "DCN",    # Int
+                      "POSTN",  # Int
+                      "MEIS1",  # Int
+                      "MEIS2",  # Int
+                      "MEIS3" # Int
+                      
+                      
+                      
+                      
+                      
+)
 
 
 p1 <- DotPlot(seurat.obj.f,
-features = markers.to.plot1,
+features = markers.to.plot4,
 dot.scale = 8,
 dot.min = 0,
 scale.max = 100,
@@ -431,10 +494,10 @@ p1
 
 ```
 
-### 04 Manual Doblet Removal 
+
 
 ```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
-
+### 04 Manual Doblet Removal - Skipped in revision 
 seurat.obj.f_singlets <- seurat.obj.f
 Filter_2  <- ncol(seurat.obj.f_singlets)
 
@@ -451,85 +514,67 @@ print(cell_counts)
 ```
 
 
-```{r  error=FALSE, fig.height=11, fig.width=25, message=FALSE, warning=FALSE, include=FALSE}
-
-# Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
-
-f1 <- DotPlot(seurat.obj.f_singlets,
-features = markers.to.plot1,
-dot.scale = 8,
-dot.min = 0,
-scale.max = 100,
-scale.min = 0,
-col.min = -2.5,
-col.max = 2.5) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  coord_flip() +
-  labs(x = "Gene Features", y = "Clusters")
-
-f1
-
-```
 
 
 ```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 
-# Apply the name "SINGLET" or "DOUBLET" to a cluster based on the multidimensional dot plot
-
-doublet_clusters <- c(55,50,9, 62, 11)
-
-# Annotate metadata
-seurat.obj.f_singlets@meta.data <- seurat.obj.f_singlets@meta.data %>%
-  mutate(subclass.doublet = if_else(
-    seurat_clusters %in% doublet_clusters, "DOUBLET", "SINGLET"
-  ))
-
-# Change the identities to align with new subclass names and make umap
-Idents(seurat.obj.f_singlets) <- seurat.obj.f_singlets@meta.data$subclass.doublet
-
-f1 <- DimPlot(seurat.obj.f_singlets, reduction = "umap") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle("Before Manual Doublet Filtering")
+# # Apply the name "SINGLET" or "DOUBLET" to a cluster based on the multidimensional dot plot
+# 
+# doublet_clusters <- c()
+# 
+# # Annotate metadata
+# seurat.obj.f_singlets@meta.data <- seurat.obj.f_singlets@meta.data %>%
+#   mutate(subclass.doublet = if_else(
+#     seurat_clusters %in% doublet_clusters, "DOUBLET", "SINGLET"
+#   ))
+# 
+# # Change the identities to align with new subclass names and make umap
+# Idents(seurat.obj.f_singlets) <- seurat.obj.f_singlets@meta.data$subclass.doublet
+# 
+# f1 <- DimPlot(seurat.obj.f_singlets, reduction = "umap") +
+#   theme(plot.title = element_text(hjust = 0.5)) +
+#   ggtitle("Before Manual Doublet Filtering")
 
 ```
 
 ```{r  echo=FALSE, error=FALSE, fig.height=4, fig.width=16, message=FALSE, warning=FALSE, results='hide'}
-# Double check the table to ensure SINGLET & DOUBLET cluster appear with this function
-table(Idents(seurat.obj.f_singlets))
-
-# Clean out the doublets manually that were identified 
-seurat.obj.f_cleaned <- subset(seurat.obj.f_singlets, idents = "DOUBLET", invert = TRUE)
-
-# Double check that the identity was removed 
-table(Idents(seurat.obj.f_cleaned))
-
-# Make umap to double check removal 
-f2 <- DimPlot(seurat.obj.f_cleaned, reduction = "umap") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle("After Manual Doublet Filtering")
-
-f1+f2
-
-# Remove unused objects in environment to save RAM
-rm(seurat.obj.f_singlets, seurat.obj.f)
+# # Double check the table to ensure SINGLET & DOUBLET cluster appear with this function
+# table(Idents(seurat.obj.f_singlets))
+# 
+# # Clean out the doublets manually that were identified 
+# seurat.obj.f_cleaned <- subset(seurat.obj.f_singlets, idents = "DOUBLET", invert = TRUE)
+# 
+# # Double check that the identity was removed 
+# table(Idents(seurat.obj.f_cleaned))
+# 
+# # Make umap to double check removal 
+# f2 <- DimPlot(seurat.obj.f_cleaned, reduction = "umap") +
+#   theme(plot.title = element_text(hjust = 0.5)) +
+#   ggtitle("After Manual Doublet Filtering")
+# 
+# f1+f2
+# 
+# # Remove unused objects in environment to save RAM
+# rm(seurat.obj.f_singlets, seurat.obj.f)
 ```
 
 
 ```{r error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 
-seurat.obj.f_cleaned_new <- SCTransform(seurat.obj.f_cleaned) %>%
-    RunPCA() %>%
-    FindNeighbors(dims = 1:40) %>%
-    FindClusters(resolution = 2, verbose = FALSE) %>%
-    RunUMAP(dims = 1:40)
-
-DimPlot(seurat.obj.f_cleaned_new, reduction = "umap", label = TRUE) +  
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle(paste0("Non-annotated Clusters for ", sample_name))
-
-DefaultAssay(seurat.obj.f_cleaned_new) <- "RNA"
-
-seurat.obj.f_cleaned <- seurat.obj.f_cleaned_new
+seurat.obj.f_cleaned <- seurat.obj.f
+# seurat.obj.f_cleaned_new <- SCTransform(seurat.obj.f_cleaned) %>%
+#     RunPCA() %>%
+#     FindNeighbors(dims = 1:40) %>%
+#     FindClusters(resolution = 2, verbose = FALSE) %>%
+#     RunUMAP(dims = 1:40)
+# 
+# DimPlot(seurat.obj.f_cleaned_new, reduction = "umap", label = TRUE) +  
+#   theme(plot.title = element_text(hjust = 0.5)) +
+#   ggtitle(paste0("Non-annotated Clusters for ", sample_name))
+# 
+# DefaultAssay(seurat.obj.f_cleaned_new) <- "RNA"
+# 
+# seurat.obj.f_cleaned <- seurat.obj.f_cleaned_new
 ```
 
 
@@ -537,7 +582,7 @@ seurat.obj.f_cleaned <- seurat.obj.f_cleaned_new
 # Make mdd for all removed doublets 
 
 DotPlot(seurat.obj.f_cleaned,
-features = markers.to.plot1,
+features = markers.to.plot4,
 dot.scale = 8,
 dot.min = 0,
 scale.max = 100,
@@ -550,38 +595,35 @@ col.max = 2.5) +
 ```
 
 
-### 05 Annotation by Subclass
+### 04 Annotation by Subclass
 
-```{r  echo=TRUE, error=FALSE, message=FALSE, warning=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center', fig.align='center'}
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
 # Apply names to the clusters by subclass
 seurat.obj.f_cleaned@meta.data <- seurat.obj.f_cleaned@meta.data %>% mutate(subclass = dplyr::case_when(
 seurat_clusters == 0 ~ "INT",
 seurat_clusters == 1 ~ "INT",
-seurat_clusters == 2 ~ "PODO",
+seurat_clusters == 2 ~ "INT",
 seurat_clusters == 3 ~ "INT",
 seurat_clusters == 4 ~ "INT",
-seurat_clusters == 5 ~ "INT", 
+seurat_clusters == 5 ~ "PODO", 
 seurat_clusters == 6 ~ "PODO",
 seurat_clusters == 7 ~ "INT",
 seurat_clusters == 8 ~ "INT",
 seurat_clusters == 9 ~ "INT",
 seurat_clusters == 10 ~ "INT",
-seurat_clusters == 11 ~ "INT",
+seurat_clusters == 11 ~ "PODO",
 seurat_clusters == 12 ~ "INT",
-seurat_clusters == 13 ~ "INT",
-seurat_clusters == 14 ~ "INT",
+seurat_clusters == 13 ~ "TUBULES",
+seurat_clusters == 14 ~ "PODO",
 seurat_clusters == 15 ~ "INT",
 seurat_clusters == 16 ~ "INT",
 seurat_clusters == 17 ~ "INT",
-seurat_clusters == 18 ~ "PODO",
-seurat_clusters == 19 ~ "PODO",
+seurat_clusters == 18 ~ "TUBULES",
+seurat_clusters == 19 ~ "INT",
 seurat_clusters == 20 ~ "INT",
-seurat_clusters == 21 ~ "TUBULES",
-seurat_clusters == 22 ~ "INT",
-seurat_clusters == 23 ~ "PODO",
-seurat_clusters == 24 ~ "PODO",
-seurat_clusters == 25 ~ "TUBULES",
-seurat_clusters == 26 ~ "INT"
+seurat_clusters == 21 ~ "INT",
+seurat_clusters == 22 ~ "TUBULES",
+seurat_clusters == 23 ~ "INT"
 ))
 
 
@@ -671,7 +713,7 @@ saveWorkbook(
 ```
 
 
-### 06 Annotation by Type
+### 05 Annotation by Type
 
 ```{r  echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center', fig.align='center'}
 # Change the order of the identities on the x-axis to create a diagonal on the dotplot, going from top to bottom of the "naming kidney cells" table
@@ -747,7 +789,7 @@ col.max = 2.5) +
 ```
 
 
-### 07 Cell Proportions
+### 06 Cell Proportions
 ```{r include=FALSE}
 nrow(seurat.obj.f_cleaned@meta.data)
 sum(table(seurat.obj.f_cleaned$subclass))
@@ -764,7 +806,7 @@ seurat.obj.f_cleaned@meta.data %>%
 
 
 
-```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center', fig.align='center'}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
 library(gt)
 
 # Create summary table
@@ -804,7 +846,7 @@ subclass_summary_with_total %>%
 ```
 
 
-```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center', fig.align='center'}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
 library(ggplot2)
 library(dplyr)
 library(extrafont)  # optional, for better font control on some systems
@@ -851,9 +893,9 @@ gc()
 
 
 
-### 08 Tubules Subsetting
+### 07 Tubules Subsetting
 ```{r include=FALSE}
-# seurat.obj.f_cleaned <- qread(here("Outputs","TrypAnnotated.qs"))
+ #seurat.obj.f_cleaned <- qread(here("Outputs","TrypAnnotated.qs"))
 # here Iam subsettign my tubules
 head(seurat.obj.f_cleaned)
 
@@ -864,11 +906,11 @@ seurat.tubules <- subset(seurat.obj.f_cleaned, subset = celltype == "TUBULES")
 head(seurat.tubules)
 ```
 
-```{r include=FALSE}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
 seurat.tubules.transformed<- SCTransform(seurat.tubules) %>%
     RunPCA() %>%
     FindNeighbors(dims = 1:10) %>%
-    FindClusters(resolution = 0.5, verbose = FALSE) %>%
+    FindClusters(resolution = 0.2, verbose = FALSE) %>%
     RunUMAP(dims = 1:10)
 
 DimPlot(seurat.tubules.transformed, reduction = "umap", label = TRUE) +  
@@ -878,7 +920,7 @@ DimPlot(seurat.tubules.transformed, reduction = "umap", label = TRUE) +
 DefaultAssay(seurat.tubules.transformed) <- "RNA"
 ```
 
-```{r include=FALSE}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
 markers.to.plot2 <- c("CFH",     # PEC
                       "CLDN1",   # PEC
          
@@ -914,8 +956,9 @@ markers.to.plot2 <- c("CFH",     # PEC
                       "SPTSSB",  # LoH
                       "MECOM",   # LoH
                       "ESRRG",   # LoH
-                      
-
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                      "CA2",       # IC
                  
                       "KRT19",   # UE
                       "FOXQ1"    # UE
@@ -939,17 +982,19 @@ col.max = 2.5) +
 ```
 
 
-```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
 seurat.tubules.transformed@meta.data <- seurat.tubules.transformed@meta.data %>% mutate(subclass = dplyr::case_when(
-seurat_clusters == 0 ~ "DT-UE",
-seurat_clusters == 1 ~ "PT",
+seurat_clusters == 0 ~ "Unknown1",
+seurat_clusters == 1 ~ "PT-DT",
+seurat_clusters == 2 ~ "PEC",
+seurat_clusters == 3 ~ "Unknown2"
 
 
 ))
 
 # Filter out the doublets
 
-subclass_order <- c("PT", "DT-UE" )
+subclass_order <- c("PEC","PT-DT", "Unknown1", "Unknown2" )
 
 seurat.tubules.transformed@meta.data$subclass <- factor(seurat.tubules.transformed@meta.data$subclass, levels = subclass_order)
 
@@ -964,7 +1009,7 @@ FeaturePlot(seurat.tubules.transformed, features = c("nCount_RNA", "nFeature_RNA
 ```
 
 
-```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
 DotPlot(seurat.tubules.transformed,
 features = markers.to.plot2,
 dot.scale = 8,
@@ -997,7 +1042,7 @@ seurat.tubules.transformed@meta.data %>%
 
 
 
-```{r echo=FALSE}
+```{r echo=TRUE}
 library(gt)
 # Create summary table
 subclass_summary <- seurat.tubules.transformed@meta.data %>%
@@ -1035,7 +1080,7 @@ subclass_summary_with_total %>%
 ```
 
 
-```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
 library(ggplot2)
 library(dplyr)
 library(extrafont)  # optional, for better font control on some systems
@@ -1067,7 +1112,7 @@ ggplot(subclass_summary, aes(x = "", y = percent, fill = subclass)) +
 #qsave(seurat.tubules.transformed, here("Outputs", "Tryp_Tubules_Annotated.qs"))
 ```
 
-`r {"<span style='color:red;font-weight:bold;'>This Tubules subset analysis cannot be trusted due to low cell count and the use of z-scores is not valid with only having two cell clusters.</span>"}`
+
 
 ```{r include=FALSE}
 #FREE MEMORY
@@ -1076,7 +1121,7 @@ rm(seurat.obj.f_cleaned,
    seurat.tubules.transformed,
    markers.to.plot2,
    subclass_order,
-   comp, subclass_summary, subclass_summary_with_total, seurat.obj.f_cleaned_new, f1, f2, doublet_clusters, Filter_3, markers.to.plot1, p_comp, p_prop_clean, p1, resolution_value, sample_name, Start, target_ct, x)
+   comp, subclass_summary, subclass_summary_with_total, seurat.obj.f_cleaned_new, f1, f2, doublet_clusters, Filter_3, markers.to.plot1, p_comp, p_prop_clean, p1, resolution_value, sample_name, Start, target_ct, x, markers.to.plot4)
 gc()
 ```
 
@@ -1093,13 +1138,13 @@ sample_name <- "CAP" # Replace with your sample name
 
 ```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 
-# # Create a Soup Channel Object(sc) to use for future filtering of ambient RNA 
-# RawDataset = Read10X_h5(here("Datasets", "CAP_raw_feature_bc_matrix.h5"))
-# FilteredDataset = Read10X_h5(here("Datasets", "CAP_filtered_feature_bc_matrix.h5"))
-# 
-# # Make a Seurat Object from the filtered control data 
-# filtered_kidney <- Read10X_h5(here("Datasets", "CAP_filtered_feature_bc_matrix.h5"))
-# filtered_kidney <- CreateSeuratObject(counts = filtered_kidney, project = "Filteredkidney_snRNA")
+# Create a Soup Channel Object(sc) to use for future filtering of ambient RNA
+RawDataset = Read10X_h5(here("Datasets", "CAP_raw_feature_bc_matrix.h5"))
+FilteredDataset = Read10X_h5(here("Datasets", "CAP_filtered_feature_bc_matrix.h5"))
+
+# Make a Seurat Object from the filtered control data
+filtered_kidney <- Read10X_h5(here("Datasets", "CAP_filtered_feature_bc_matrix.h5"))
+filtered_kidney <- CreateSeuratObject(counts = filtered_kidney, project = "Filteredkidney_snRNA")
 
 ```
 
@@ -1108,37 +1153,37 @@ sample_name <- "CAP" # Replace with your sample name
 ### 01 SoupX
 
 ```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
-# sc = SoupChannel(RawDataset,FilteredDataset)
-# 
-# # Cluster the Cells with Seurat 
-# filtered_kidney <- SCTransform(filtered_kidney, verbose = F)
-# filtered_kidney <- RunPCA(filtered_kidney, verbose = F)
-# filtered_kidney <- RunUMAP(filtered_kidney, dims = 1:40, verbose = F)
-# filtered_kidney <- FindNeighbors(filtered_kidney, dims = 1:40, verbose = F)
-# filtered_kidney <- FindClusters(filtered_kidney, verbose = F)
-# 
-# meta <- filtered_kidney@meta.data
-# umap <- filtered_kidney@reductions$umap@cell.embeddings
-# clusters <- setNames(meta$seurat_clusters, rownames(meta))
-# 
-# #Ensure the two following numbers are equal before continuing 
-# check1 <- length(clusters)
-# check2 <- nrow(sc$metaData)
-# 
-# sc <- setClusters(sc, clusters)
-# sc <- setDR(sc, umap)
+sc = SoupChannel(RawDataset,FilteredDataset)
+
+# Cluster the Cells with Seurat
+filtered_kidney <- SCTransform(filtered_kidney, verbose = F)
+filtered_kidney <- RunPCA(filtered_kidney, verbose = F)
+filtered_kidney <- RunUMAP(filtered_kidney, dims = 1:40, verbose = F)
+filtered_kidney <- FindNeighbors(filtered_kidney, dims = 1:40, verbose = F)
+filtered_kidney <- FindClusters(filtered_kidney, verbose = F)
+
+meta <- filtered_kidney@meta.data
+umap <- filtered_kidney@reductions$umap@cell.embeddings
+clusters <- setNames(meta$seurat_clusters, rownames(meta))
+
+#Ensure the two following numbers are equal before continuing
+check1 <- length(clusters)
+check2 <- nrow(sc$metaData)
+
+sc <- setClusters(sc, clusters)
+sc <- setDR(sc, umap)
 
 ```
 
 Estimation of **`r sample_name`** Ambient RNA levels
 
-```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+```{r echo=TRUE, error=FALSE, message=FALSE, warning=FALSE}
 
-# sc = autoEstCont(sc)
-# 
-# x <- sc$fit$rhoEst * 100
-# y <- sc$fit$rhoFWHM * 100
-# #in bad datasets the peak is 
+sc = autoEstCont(sc)
+
+x <- sc$fit$rhoEst * 100
+y <- sc$fit$rhoFWHM * 100
+#in bad datasets the peak is
 ```
 
 **WARNING:** Ambient RNA
@@ -1147,16 +1192,16 @@ Estimation of **`r sample_name`** Ambient RNA levels
 
 ```{r error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 
-# #Clean the data
-# filtered_kidney_out = adjustCounts(sc)
-#  
-# #Create a new Seurat Object out of the cleaned data
-# seurat.seurat.obj.f_cleaned<- CreateSeuratObject(filtered_kidney_out)
-# 
-# # Remove unused objects in environment to save RAM
-# 
-# 
-# #rm(filtered_kidney, filtered_kidney_out, FilteredDataset, RawDataset, sc, meta, check1, check2, clusters, umap, y, Datasets, Outputs)
+#Clean the data
+filtered_kidney_out = adjustCounts(sc)
+
+#Create a new Seurat Object out of the cleaned data
+seurat.seurat.obj.f_cleaned<- CreateSeuratObject(filtered_kidney_out)
+
+# Remove unused objects in environment to save RAM
+
+
+rm(filtered_kidney, filtered_kidney_out, FilteredDataset, RawDataset, sc, meta, check1, check2, clusters, umap, y, Datasets, Outputs)
 ```
 
 
@@ -1165,21 +1210,26 @@ This step serves to filter out droplets that may have **inadvertently** been det
 
 ```{r echo=TRUE, error=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE, results='hide'}
 
-# Start <- ncol(seurat.obj)
-# 
-# p1 <- VlnPlot(seurat.obj, features = c("nFeature_RNA")) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
-# 
-# p2 <- VlnPlot(seurat.obj, features = c("nFeature_RNA"), pt.size = 0) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
-# 
-# p3 <- VlnPlot(seurat.obj, features = c("nCount_RNA")) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
-# 
-# p4 <- VlnPlot(seurat.obj, features = c("nCount_RNA"), pt.size = 0) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
-# 
-# cowplot::plot_grid(p1, p2, p3, p4, ncol = 4, scale = .85) + draw_label("Before Filtering", y = .95, size = 22, fontface = "bold")
+seurat.obj <- seurat.seurat.obj.f_cleaned
 
-# Minimal filtering of low quality cells 
-# seurat.obj.f <- subset(seurat.obj, nFeature_RNA > 800 & nFeature_RNA < 3500 & nCount_RNA   > 1000 & nCount_RNA   < 5000)
-seurat.obj.f <- qread(here("Datasets","CAP_filtered.qs"))
+rm(seurat.seurat.obj.f_cleaned)
+
+
+Start <- ncol(seurat.obj)
+
+ p1 <- VlnPlot(seurat.obj, features = c("nFeature_RNA")) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+ p2 <- VlnPlot(seurat.obj, features = c("nFeature_RNA"), pt.size = 0) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+ p3 <- VlnPlot(seurat.obj, features = c("nCount_RNA")) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+ p4 <- VlnPlot(seurat.obj, features = c("nCount_RNA"), pt.size = 0) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+ cowplot::plot_grid(p1, p2, p3, p4, ncol = 4, scale = .85) + draw_label("Before Filtering", y = .95, size = 22, fontface = "bold")
+
+# Minimal filtering of low quality cells
+ seurat.obj.f <- subset(seurat.obj, nFeature_RNA > 800 & nFeature_RNA < 3500 & nCount_RNA   > 1000 & nCount_RNA   < 5000)
+# seurat.obj.f <- qread(here("Datasets","CAP_filtered.qs"))
 
 
 
@@ -1204,7 +1254,7 @@ cowplot::plot_grid(p1, p2, p3, p4, ncol = 4, scale = .85) + draw_label("After Fi
 
 # Remove unused objects in environment to save RAM
 
-#rm(seurat.obj, p1, p2, p3, p4, cell_counts)
+rm(seurat.obj, p1, p2, p3, p4, cell_counts)
 
 ```
 
@@ -1214,7 +1264,7 @@ Filtering parameters used: nFeature_RNA > 800 & nFeature_RNA < 3500 & nCount_RNA
 
 ```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 
-resolution_value <- 9.0 # Set the resolution value for clustering
+resolution_value <- 2.0 # Set the resolution value for clustering
 
 ```
 
@@ -1288,11 +1338,9 @@ saveWorkbook(wb, here("Outputs", paste0(date, "_", sample_name, "_FindAllMarkers
 
 
 
-```{r  error=FALSE, fig.height=11, fig.width=20, message=FALSE, warning=FALSE, include=FALSE}
+```{r echo=TRUE, fig.align='center', fig.height=9, , fig.width=14, dpi=300}
 
-markers.to.plot1 <- c("EYA1",    # NPC
-                      "SIX2",    # NPC
-                      "CITED1",  # NPC
+markers.to.plot1 <- c(
                       
                       "NPHS1",   # PODO
                       "NPHS2",   # PODO
@@ -1312,20 +1360,7 @@ markers.to.plot1 <- c("EYA1",    # NPC
                       "SLC34A1", # PT
                       "LRP2",    # PT
                       "HNF4A",   # PT
-                      "SLC5A1",  # PT
-                      "SLC5A2",  # PT
-                      "ABCC2",   # PT
-                      "ABCG2",   # PT
-                      "SLC47A1", # PT
-                      "SLC23A1", # PT
-                      "SLC38A3", # PT
-                      "SLC13A2", # PT
-
-                      "CALB1",   # CNT
-                      "S100G",   # CNT
-                      "TRPV5",   # CNT
-                      "KCNE1",   # CNT
-                      "SLC2A9",  # CNT
+                     
                       "EMX1",    # CNT
                       "VDR",     # CNT
             
@@ -1351,14 +1386,9 @@ markers.to.plot1 <- c("EYA1",    # NPC
                       "SCNN1G",  # PC
                       
                       "FOXI1",     # IC
-                      "ATP6V1B1",  # IC
-                      "ATP6V0D2",  # IC
-                      "ATP6V1C2",  # IC
-                      "ATP6V1G3",  # IC
+                     
                       "CA2",       # IC
-                      "SLC4A1",    # IC
-                      "SLC4A9",    # IC
-                      "SLC26A4",   # IC
+                      
                       "RHCG",      # IC
                  
                       "KRT19",   # UE
@@ -1366,15 +1396,7 @@ markers.to.plot1 <- c("EYA1",    # NPC
                       
                       "RET",     # UPC
                       "WNT11",   # UPC
-                      
-                      "CD34",   # Endo
-                      "CDH5",   # Endo
-                      "MCAM",   # Endo
-                      "KDR",    # Endo
-                      "FLT1",   # Endo
-                      "ESM1",   # Endo
-                      "EGFL7",  # Vasc
-                      "PLVAP",  # Vasc
+                  
                       
                       "PDGFRA", # Int
                       "PDGFRB", # Int
@@ -1382,15 +1404,8 @@ markers.to.plot1 <- c("EYA1",    # NPC
                       "POSTN",  # Int
                       "MEIS1",  # Int
                       "MEIS2",  # Int
-                      "MEIS3",  # Int
-                      
-                      "IKZF1",  # Imm
-                      "CD36",   # Imm
-                     
-                      "MAP6",   # NEURO
-                      "SOX2",   # NEURO
-                      
-                      "REN"     #Renin
+                      "MEIS3" # Int
+                   
                       
                       
                       
@@ -1433,10 +1448,10 @@ rm(seurat.obj.f)
 ```
 
 
-###  04 Manual Doublet Removal 1
+###  04 Manual Doublet Removal 
 
 
-```{r  error=FALSE, fig.height=11, fig.width=25, message=FALSE, warning=FALSE, include=FALSE}
+```{r error=FALSE, fig.height=11, fig.width=25, message=FALSE, warning=FALSE, include=FALSE}
 
 # Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
 
@@ -1461,7 +1476,7 @@ f1
 
 # Apply the name "SINGLET" or "DOUBLET" to a cluster based on the multidimensional dot plot
 
-doublet_clusters <- c(28,73,64,36)
+doublet_clusters <- c(16,24)
 
 # Annotate metadata
 seurat.obj.f_singlets@meta.data <- seurat.obj.f_singlets@meta.data %>%
@@ -1478,7 +1493,7 @@ f1 <- DimPlot(seurat.obj.f_singlets, reduction = "umap") +
 
 ```
 
-```{r  echo=FALSE, error=FALSE, fig.height=4, fig.width=16, message=FALSE, warning=FALSE, results='hide'}
+```{r  echo=FALSE, error=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center', message=FALSE, warning=FALSE, results='hide'}
 # Double check the table to ensure SINGLET & DOUBLET cluster appear with this function
 table(Idents(seurat.obj.f_singlets))
 
@@ -1501,12 +1516,12 @@ rm(seurat.obj.f_singlets)
 
 
 
-```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+```{r echo=TRUE, error=FALSE, message=FALSE, warning=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
 #Re-Cluster Singlets
 seurat.obj.f_cleaned <- SCTransform(seurat.obj.f_cleaned) %>%
     RunPCA() %>%
     FindNeighbors(dims = 1:40) %>%
-    FindClusters(resolution = 3.5, verbose = FALSE) %>%
+    FindClusters(resolution = 2, verbose = FALSE) %>%
     RunUMAP(dims = 1:40)
 
 DimPlot(seurat.obj.f_cleaned, reduction = "umap", label = TRUE) +  
@@ -1518,7 +1533,7 @@ DefaultAssay(seurat.obj.f_cleaned) <- "RNA"
 ```
 
 
-```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
 # Make mdd for all removed doublets 
 
 DotPlot(seurat.obj.f_cleaned,
@@ -1534,139 +1549,32 @@ col.max = 2.5) +
   labs(x = "Gene Features", y = "Clusters")
 ```
 
-### 05 Manual Doublet Removal 2
 
 
-```{r error=FALSE, fig.height=11, fig.width=25, message=FALSE, warning=FALSE, include=FALSE}
+### 05 Annotation by Subclass
 
-# Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
-#rm(seurat.obj.f_singlets, seurat.obj.f_singlets)
-f1 <- DotPlot(seurat.obj.f_cleaned,
-features = markers.to.plot1,
-dot.scale = 8,
-dot.min = 0,
-scale.max = 100,
-scale.min = 0,
-col.min = -2.5,
-col.max = 2.5) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  coord_flip() +
-  labs(x = "Gene Features", y = "Clusters")
-
-f1
-seurat.obj.f_singlets <- seurat.obj.f_cleaned
-
-rm(seurat.obj.f_cleaned)
-```
-
-
-```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
-
-# Apply the name "SINGLET" or "DOUBLET" to a cluster based on the multidimensional dot plot
-
-doublet_clusters <- c(29)
-
-# Annotate metadata
-seurat.obj.f_singlets@meta.data <- seurat.obj.f_singlets@meta.data %>%
-  mutate(subclass.doublet = if_else(
-    seurat_clusters %in% doublet_clusters, "DOUBLET", "SINGLET"
-  ))
-
-# Change the identities to align with new subclass names and make umap
-Idents(seurat.obj.f_singlets) <- seurat.obj.f_singlets@meta.data$subclass.doublet
-
-f1 <- DimPlot(seurat.obj.f_singlets, reduction = "umap") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle("Before Manual Doublet Filtering")
-
-```
-
-```{r  echo=FALSE, error=FALSE, fig.height=4, fig.width=16, message=FALSE, warning=FALSE, results='hide'}
-# Double check the table to ensure SINGLET & DOUBLET cluster appear with this function
-table(Idents(seurat.obj.f_singlets))
-
-# Clean out the doublets manually that were identified 
-seurat.obj.f_cleaned <- subset(seurat.obj.f_singlets, idents = "DOUBLET", invert = TRUE)
-
-# Double check that the identity was removed 
-table(Idents(seurat.obj.f_cleaned))
-
-# Make umap to double check removal 
-f2 <- DimPlot(seurat.obj.f_cleaned, reduction = "umap") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle("After Manual Doublet Filtering")
-
-f1+f2
-
-# Remove unused objects in environment to save RAM
-rm(seurat.obj.f_singlets)
-```
-
-
-```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
-
-seurat.obj.f_cleaned <- SCTransform(seurat.obj.f_cleaned) %>%
-    RunPCA() %>%
-    FindNeighbors(dims = 1:40) %>%
-    FindClusters(resolution = 2.5, verbose = FALSE) %>%
-    RunUMAP(dims = 1:40)
-
-DimPlot(seurat.obj.f_cleaned, reduction = "umap", label = TRUE) +  
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle(paste0("Non-annotated Clusters for ", sample_name))
-
-DefaultAssay(seurat.obj.f_cleaned) <- "RNA"
-
-```
-
-```{r include=FALSE}
-f1 <- DotPlot(seurat.obj.f_cleaned,
-features = markers.to.plot1,
-dot.scale = 8,
-dot.min = 0,
-scale.max = 100,
-scale.min = 0,
-col.min = -2.5,
-col.max = 2.5) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  coord_flip() +
-  labs(x = "Gene Features", y = "Clusters")
-
-f1
-
-rm(seurat.obj.f_singlets)
-```
-
-
-
-
-### 06 Annotation by Subclass
-
-```{r  echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
 # Apply names to the clusters by subclass
 seurat.obj.f_cleaned@meta.data <- seurat.obj.f_cleaned@meta.data %>% mutate(subclass = dplyr::case_when(
 seurat_clusters == 0 ~ "PODO",
 seurat_clusters == 1 ~ "PODO",
 seurat_clusters == 2 ~ "PODO",
-seurat_clusters == 3 ~ "TUBULES",
-seurat_clusters == 4 ~ "PODO",
-seurat_clusters == 5 ~ "PODO", 
-seurat_clusters == 6 ~ "TUBULES",
+seurat_clusters == 3 ~ "PODO",
+seurat_clusters == 4 ~ "TUBULES",
+seurat_clusters == 5 ~ "TUBULES", 
+seurat_clusters == 6 ~ "PODO",
 seurat_clusters == 7 ~ "PODO",
-seurat_clusters == 8 ~ "PODO",
-seurat_clusters == 9 ~ "PODO",
+seurat_clusters == 8 ~ "TUBULES",
+seurat_clusters == 9 ~ "TUBULES",
 seurat_clusters == 10 ~ "PODO",
 seurat_clusters == 11 ~ "PODO",
 seurat_clusters == 12 ~ "TUBULES",
-seurat_clusters == 13 ~ "TUBULES",
+seurat_clusters == 13 ~ "PODO",
 seurat_clusters == 14 ~ "TUBULES",
 seurat_clusters == 15 ~ "TUBULES",
 seurat_clusters == 16 ~ "TUBULES",
-seurat_clusters == 17 ~ "TUBULES",
-seurat_clusters == 18 ~ "TUBULES",
-seurat_clusters == 19 ~ "INT",
-seurat_clusters == 20 ~ "TUBULES",
-seurat_clusters == 21 ~ "TUBULES"
+seurat_clusters == 17 ~ "INT",
+seurat_clusters == 18 ~ "TUBULES"
 
 ))
 
@@ -1748,9 +1656,9 @@ saveWorkbook(
 
 
 
-### 07 Annotation by Type
+### 06 Annotation by Type
 
-```{r echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
 # Change the order of the identities on the x-axis to create a diagonal on the dotplot, going from top to bottom of the "naming kidney cells" table
 markers.to.plot2 <- c("NPHS1",   # PODO
                       "NPHS2",   # PODO
@@ -1767,7 +1675,10 @@ markers.to.plot2 <- c("NPHS1",   # PODO
                       "HNF4A",   # PT
                       
                 
+                      "EMX1",    # CNT
+                      "VDR",     # CNT
             
+                      
                       "TMEM52B", # CNT, DT
                       "SLC12A3", # DT
                       "GATA3",   # DT, PC, UE
@@ -1827,7 +1738,7 @@ rm(markers.to.plot2)
 
 
 
-### 08 Cell Proportions
+### 07 Cell Proportions
 ```{r include=FALSE}
 nrow(seurat.obj.f_cleaned@meta.data)
 sum(table(seurat.obj.f_cleaned$subclass))
@@ -1844,7 +1755,7 @@ seurat.obj.f_cleaned@meta.data %>%
 
 
 
-```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
 library(gt)
 
 # Create summary table
@@ -1930,7 +1841,7 @@ gc()
 
 
 
-### 09 Tubules Subsetting
+### 08 Tubules Subsetting
 ```{r include=FALSE}
 #seurat.obj.f_cleaned <- qread(here("Outputs", "CAPAnnotated.qs"))
 #here Iam subsettign my tubules
@@ -1945,12 +1856,12 @@ head(seurat.tubules)
 rm(seurat.obj.f_cleaned)
 ```
 
-```{r include=FALSE}
+```{r echo=TRUE,fig.width=14, fig.height=9, dpi=300, fig.align='center'}
 seurat.tubules.transformed<- SCTransform(seurat.tubules) %>%
     RunPCA() %>%
-    FindNeighbors(dims = 1:10) %>%
-    FindClusters(resolution = 0.25, verbose = FALSE) %>%
-    RunUMAP(dims = 1:10)
+    FindNeighbors(dims = 1:4) %>%
+    FindClusters(resolution = 0.3, verbose = FALSE) %>%
+    RunUMAP(dims = 1:4)
 
 DimPlot(seurat.tubules.transformed, reduction = "umap", label = TRUE) +  
   theme(plot.title = element_text(hjust = 0.5)) +
@@ -1959,7 +1870,7 @@ DimPlot(seurat.tubules.transformed, reduction = "umap", label = TRUE) +
 DefaultAssay(seurat.tubules.transformed) <- "RNA"
 ```
 
-```{r include=FALSE}
+```{r echo=TRUE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
 markers.to.plot2 <- c("CFH",     # PEC
                       "CLDN1",   # PEC
          
@@ -1972,7 +1883,12 @@ markers.to.plot2 <- c("CFH",     # PEC
                       "LRP2",    # PT
                       "HNF4A",   # PT
                 
-
+                      "EMX1",    # CNT
+                      "VDR",     # CNT
+            
+                      
+                      "TMEM52B", # CNT, DT
+                      
                       "SLC12A3", # DT
                       "GATA3",   # DT, PC, UE
                       "RHBG",    # DT
@@ -1982,6 +1898,8 @@ markers.to.plot2 <- c("CFH",     # PEC
                       "TFCP2L1", # DN, LoH
                       
                       "UPK1A",   #DmC
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
                   
                       "UMOD",    # LoH
                       "AQP1",    # LoH
@@ -1989,7 +1907,7 @@ markers.to.plot2 <- c("CFH",     # PEC
                       "MECOM",   # LoH
                       "ESRRG",   # LoH
                       
-
+                      
                  
                       "KRT19",   # UE
                       "FOXQ1"  # UE
@@ -2013,99 +1931,28 @@ col.max = 2.5) +
 ```
 
 
-```{r name doublet or singlet, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
-
-# Apply the name "SINGLET" or "DOUBLET" to a cluster based on the multidimensional dot plot
-
-doublet_clusters <- c(1)
-
-# Annotate metadata
-seurat.tubules.transformed@meta.data <- seurat.tubules.transformed@meta.data %>%
-  mutate(subclass.doublet = if_else(
-    seurat_clusters %in% doublet_clusters, "DOUBLET", "SINGLET"
-  ))
-
-# Change the identities to align with new subclass names and make umap
-Idents(seurat.tubules.transformed) <- seurat.tubules.transformed@meta.data$subclass.doublet
-
-f1 <- DimPlot(seurat.tubules.transformed, reduction = "umap") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle("Before Manual Doublet Filtering")
-
-
-head(seurat.tubules.transformed)
-```
-
-```{r remove doublets manually, error=FALSE, fig.height=4, fig.width=16, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
-# Double check the table to ensure SINGLET & DOUBLET cluster appear with this function
-table(Idents(seurat.tubules.transformed))
-
-# Clean out the doublets manually that were identified 
-seurat.tubules.cleaned <- subset(seurat.tubules.transformed, idents = "DOUBLET", invert = TRUE)
-
-# Double check that the identity was removed 
-table(Idents(seurat.tubules.cleaned))
-
-# Make umap to double check removal 
-f2 <- DimPlot(seurat.tubules.cleaned, reduction = "umap") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle("After Manual Doublet Filtering")
-
-f1+f2
-
-# Remove unused objects in environment to save RAM
-rm(seurat.tubules.transformed, seurat.obj.f)
-```
-
-```{r include=FALSE}
-seurat.tubules.cleaned.new <- SCTransform(seurat.tubules.cleaned) %>%
-    RunPCA() %>%
-    FindNeighbors(dims = 1:10) %>%
-    FindClusters(resolution = 0.5, verbose = FALSE) %>%
-    RunUMAP(dims = 1:10)
-
-DimPlot(seurat.tubules.cleaned.new, reduction = "umap", label = TRUE) +  
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle(paste0("Non-annotated Clusters for Subcluster TUBULES" ))
-
-DefaultAssay(seurat.tubules.cleaned.new) <- "RNA"
-
-#rm(seurat.tubules.cleaned)
-```
-
-
-```{r include=FALSE}
-DotPlot(seurat.tubules.cleaned.new,
-features = markers.to.plot2,
-dot.scale = 8,
-dot.min = 0,
-scale.max = 100,
-scale.min = 0,
-col.min = -2.5,
-col.max = 2.5) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  coord_flip() +
-  labs(x = "Gene Features", y = "Clusters")
-```
 
 
 
-```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+
+seurat.tubules.cleaned.new <- seurat.tubules.transformed
+
 seurat.tubules.cleaned.new@meta.data <- seurat.tubules.cleaned.new@meta.data %>% mutate(subclass = dplyr::case_when(
-seurat_clusters == 0 ~ "PT",
+seurat_clusters == 0 ~ "Unknown",
 seurat_clusters == 1 ~ "PT",
-seurat_clusters == 2 ~ "DT",
-seurat_clusters == 3 ~ "PEC",
+seurat_clusters == 2 ~ "PT",
+seurat_clusters == 3 ~ "CNT",
 seurat_clusters == 4 ~ "PT",
-seurat_clusters == 5 ~ "DT",
-seurat_clusters == 6 ~ "PT",
-seurat_clusters == 7 ~ "PT"
+seurat_clusters == 5 ~ "PT",
+seurat_clusters == 6 ~ "LOH"
 
 ))
 
 # Filter out the doublets
 
-subclass_order <- c("PEC", "PT", "DT" )
+subclass_order <- c("PT","LOH","CNT",  "Unknown")
 
 seurat.tubules.cleaned.new@meta.data$subclass <- factor(seurat.tubules.cleaned.new@meta.data$subclass, levels = subclass_order)
 
@@ -2120,7 +1967,52 @@ FeaturePlot(seurat.tubules.cleaned.new, features = c("nCount_RNA", "nFeature_RNA
 ```
 
 
-```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+markers.to.plot2 <- c("CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                     
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                
+                     
+                     
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      "TFCP2L1", # DN, LoH
+                      
+                      
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                  
+                      "UMOD",    # LoH
+                      "AQP1",    # LoH
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                       "RHBG",    # DT
+                       "EMX1",    # CNT
+                      "VDR",     # CNT
+            
+                      
+                      "TMEM52B", # CNT, DT
+                      
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      
+                 
+                      "KRT19",   # UE
+                      "FOXQ1"  # UE
+                    
+                      
+                      
+)
+
 DotPlot(seurat.tubules.cleaned.new,
 features = markers.to.plot2,
 dot.scale = 8,
@@ -2154,7 +2046,7 @@ seurat.tubules.cleaned.new@meta.data %>%
 
 
 
-```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
 library(gt)
 
 # Create summary table
@@ -2194,7 +2086,7 @@ subclass_summary_with_total %>%
 ```
 
 
-```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
 library(ggplot2)
 library(dplyr)
 library(extrafont)  # optional, for better font control on some systems
@@ -2241,9 +2133,452 @@ rm(
   markers.to.plot1, markers.to.plot2,
   comp, target_ct,
   seurat.tubules, seurat.tubules.transformed, seurat.tubules.cleaned,
-  seurat.tubules.cleaned.new, subclass_order
+  seurat.tubules.cleaned.new, subclass_order, subclass_summary, subclass_summary_with_total, x
 )
 ```
+
+
+
+# **Integration of CAP and TRYP **
+```{r echo=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+# Core packages
+library(Seurat)
+library(qs)
+library(ggplot2)
+library(patchwork)
+
+# 1) Load your Seurat objects from .qs
+TRYP <- qread(here("Outputs","TrypAnnotated.qs"))
+CAP  <- qread(here("Outputs","CAPAnnotated.qs"))
+
+# 2) Sanity: make sure they both use the same assay name (typically "RNA")
+DefaultAssay(TRYP) <- "RNA"
+DefaultAssay(CAP)  <- "RNA"
+
+# 3) Make cell names unique and add a batch label
+TRYP <- RenameCells(TRYP, add.cell.id = "TRYP")
+CAP  <- RenameCells(CAP,  add.cell.id = "CAP")
+
+TRYP$batch <- "TRYP"
+CAP$batch  <- "CAP"
+
+# (Optional but recommended) Keep overlapping features to avoid feature-mismatch noise
+common_features <- intersect(rownames(TRYP), rownames(CAP))
+TRYP <- subset(TRYP, features = common_features)
+CAP  <- subset(CAP,  features = common_features)
+
+# 4) Merge into ONE object
+obj <- merge(TRYP, y = CAP)
+DefaultAssay(obj) <- "RNA"
+
+
+# 2) If the merged assay *already* contains split layers like counts.1/data.2, JOIN first
+#    (This makes the assay single-layer again so we can split exactly once by 'batch')
+if (length(Layers(obj[["RNA"]])) > 3 || any(grepl("\\.\\d+$", Layers(obj[["RNA"]])))) {
+  message("Joining pre-existing per-batch layers in merged object...")
+  obj[["RNA"]] <- JoinLayers(obj[["RNA"]])
+}
+
+# 3) Now split exactly once by your batch metadata, and only for raw/normalized matrices
+#    (don't layer scale.data unless you really want to)
+obj[["RNA"]] <- split(
+  obj[["RNA"]],
+  f      = obj$batch,
+  layers = c("counts","data")
+)
+
+
+
+##############SANITY CHECK###############
+# Expect something like: "TRYP", "CAP"
+Layers(obj[["RNA"]])
+
+# Compare to unique batches:
+sort(unique(obj$batch))
+
+
+# Per-batch counts from metadata
+table(obj$batch)
+
+# Per-layer cell counts from matrices (use 'layer=' in Seurat v5)
+sapply(Layers(obj[["RNA"]]), function(L) {
+  ncol(GetAssayData(obj, assay = "RNA", layer = L))  # columns = cells
+})
+
+# Per-batch counts from metadata
+table(obj$batch)
+
+# Per-layer cell counts from matrices (use 'layer=' in Seurat v5)
+sapply(Layers(obj[["RNA"]]), function(L) {
+  ncol(GetAssayData(obj, assay = "RNA", layer = L))  # columns = cells
+})
+#########################################################
+
+
+DefaultAssay(obj) <- "RNA"
+
+
+# 6) Run a quick unintegrated PCA/UMAP (optional, for comparison)
+obj <- NormalizeData(obj)
+obj <- FindVariableFeatures(obj)
+obj <- ScaleData(obj)
+obj <- RunPCA(obj)
+obj <- FindNeighbors(obj, dims = 1:30, reduction = "pca")
+obj <- FindClusters(obj, resolution = 0.6, cluster.name = "unintegrated_clusters")
+obj <- RunUMAP(obj, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated")
+
+p_unint <- DimPlot(obj, reduction = "umap.unintegrated", group.by = c("batch", "unintegrated_clusters"))
+
+
+# 7) INTEGRATE the layers (CCA), producing a shared low-dim space
+obj <- IntegrateLayers(
+  object        = obj,
+  method        = CCAIntegration,
+  orig.reduction= "pca",
+  new.reduction = "integrated.sct",
+  verbose       = FALSE
+)
+
+# 8) Re-join layers (so downstream functions that expect a single matrix behave as usual)
+obj[["RNA"]] <- JoinLayers(obj[["RNA"]])
+rm(TRYP, CAP)
+# 9) Neighbors/Clusters/UMAP on the integrated space
+obj <- FindNeighbors(obj, reduction = "integrated.sct", dims = 1:40)
+obj <- FindClusters(obj, resolution = 2)
+obj <- RunUMAP(obj, dims = 1:40, reduction = "integrated.sct")
+
+# 10) Plots
+p_unint <- DimPlot(obj, reduction = "umap.unintegrated", group.by = c("batch", "unintegrated_clusters"))
+print(p_unint)
+
+p_int1 <- DimPlot(obj, reduction = "umap", group.by = "batch")
+p_int2 <- DimPlot(obj, reduction = "umap", group.by = "seurat_clusters", label = TRUE) + NoLegend()
+p_int1 + p_int2
+
+
+
+```
+
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+# Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
+markers.to.plot1 <- c("EYA1",    # NPC
+                      "SIX2",    # NPC
+                      "CITED1",  # NPC
+                      
+                      "NPHS1",   # PODO
+                      "NPHS2",   # PODO
+                      "PODXL",   # PODO
+                      "CLIC5",   # PODO
+                      "MAFBF",   # PODO
+                      "PTPRO",   # PODO
+                      
+                      "CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                      "SLC22A6", # PT
+                      "SLC22A8", # PT
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                      "SLC5A1",  # PT
+                      "SLC5A2",  # PT
+                      "ABCC2",   # PT
+                      "ABCG2",   # PT
+                      "SLC47A1", # PT
+                      
+                      "EMX1",    # CNT
+                      "VDR",     # CNT
+            
+                      "TMEM52B", # CNT, DT
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      "RHBG",    # DT
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      "TFCP2L1", # DN, LoH
+                      
+                      
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                      
+                     
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                      
+                      
+                      "CA2",       # IC
+                      
+                 
+                      "KRT19",   # UE
+                      "FOXQ1",   # UE
+                      
+                      
+                      "WNT11",   # UPC
+                      
+                      
+                      
+                      "PDGFRA", # Int
+                      "PDGFRB", # Int
+                      "DCN",    # Int
+                      "POSTN",  # Int
+                      "MEIS1",  # Int
+                      "MEIS2",  # Int
+                      "MEIS3",  # Int
+                      "MKI67", #prolif
+                      "TOP2A"#prolif
+                      
+                      
+                      
+                      
+                      
+)
+markers.to.plot2 <- c("LRP2",         # PTS1, PTS2, PTS3
+"SLC5A12",      # PTS1
+"SLC13A3",      # PTS2
+"SLC16A9",      # PTS3
+"EPHA7",        # DTL
+"CRYAB",        # DTL
+"SLC12A1",      # TAL1, TAL2, MD
+"CLDN16",       # TAL1
+"CLDN10",       # TAL2
+"NOS1",         # MD
+"SLC12A3",      # DCT1, DCT2
+"EGF",          # DCT1
+"SLC8A1",       # CNT, DCT2
+"AQP2",         # PC
+"SLC4A1",       # ICA
+"KIT",          # ICA
+"SLC26A4",      # ICB
+"NPHS1",        # PODO
+"NCAM1"         # PEC
+                      
+)
+
+Idents(obj) <- obj$seurat_clusters
+
+p1 <- DotPlot(obj,
+features = markers.to.plot1,
+group.by = "seurat_clusters",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+
+p1
+
+p2 <- DotPlot(obj,
+features = markers.to.plot2,
+group.by = "seurat_clusters",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+
+p2
+```
+
+
+```{r}
+# FeaturePlot(obj, features = c("RPS12", "RPL36","DLG2","OLFML3"), reduction = "umap")
+# FeaturePlot(obj, features = c("CCNB1", "MKI67","PLK1","PCNA", "CHEK1"), reduction = "umap")
+# FeaturePlot(obj, features = c("OLFM3", "TUBA1A", "STMN1"), reduction = "umap")
+# 
+# FeaturePlot(obj, features = c("NPHS1", "PTPRO", "NPHS2"), reduction = "umap")
+# 
+ 
+# FeaturePlot(obj, features = c("COL1A1", "COL3A1", "DCN", "LUM", "PDGFRA", "PDGFRB"), reduction = "umap")
+# 
+# 
+# FeaturePlot(obj, features = c("COL1A1", "COL3A1", "DCN", "LUM"), reduction = "umap") # interstitial markers
+# FeaturePlot(obj, features = c("NPHS1", "NPHS2", "SYNPO"), reduction = "umap")        # podocyte markers
+ #FeaturePlot(obj, features = c("AQP2", "SCNN1G", "SLC12A3"), reduction = "umap")        
+```
+
+
+
+
+
+
+
+
+
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+# Apply names to the clusters by subclass
+
+
+obj@meta.data <- obj@meta.data %>% mutate(subclass = dplyr::case_when(
+seurat_clusters == 0 ~ "PODO",
+seurat_clusters == 1 ~ "INT",
+seurat_clusters == 2 ~ "PODO",
+seurat_clusters == 3 ~ "PODO",
+seurat_clusters == 4 ~ "PODO",
+seurat_clusters == 5 ~ "PODO", 
+seurat_clusters == 6 ~ "PEC",
+seurat_clusters == 7 ~ "PT",
+seurat_clusters == 8 ~ "PODO",
+seurat_clusters == 9 ~ "PODO",
+seurat_clusters == 10 ~ "INT",
+seurat_clusters == 11 ~ "PT",
+seurat_clusters == 12 ~ "PODO",
+seurat_clusters == 13 ~ "PODO",
+seurat_clusters == 14 ~ "INT",
+seurat_clusters == 15 ~ "LOH",
+seurat_clusters == 16 ~ "PT",
+seurat_clusters == 17 ~ "PODO",
+seurat_clusters == 18 ~ "INT",
+seurat_clusters == 19 ~ "CNT",
+seurat_clusters == 20 ~ "PT",
+seurat_clusters == 21 ~ "PT",
+seurat_clusters == 22 ~ "INT",
+seurat_clusters == 23 ~ "INT",
+seurat_clusters == 24 ~ "DOUBLET",
+seurat_clusters == 25 ~ "PC",
+seurat_clusters == 26 ~ "INT",
+seurat_clusters == 27 ~ "DOUBLET",
+seurat_clusters == 28 ~ "PC"
+
+
+
+
+))
+
+# Filter out the doublets
+
+seurat.obj.f_cleaned <- subset(obj, subset = subclass == "DOUBLET", invert = TRUE)
+
+subclass_order <- c("PEC","PT","LOH", "CNT","PC","PODO", "INT")
+
+seurat.obj.f_cleaned@meta.data$subclass <- factor(seurat.obj.f_cleaned@meta.data$subclass, levels = subclass_order)
+
+# Change the identities to align with new subclass names and make umap
+Idents(seurat.obj.f_cleaned) <- seurat.obj.f_cleaned@meta.data$subclass
+
+DimPlot(seurat.obj.f_cleaned, reduction = "umap", label = TRUE, label.size = 4) +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Subclass Annotation for Integrated Tryp + CAP Data"))
+
+
+
+FeaturePlot(obj, features = c("MKI67", "TOP2A", "CENPF", "PCNA"), reduction = "umap")
+```
+
+
+
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+markers.to.plot6 <- c(
+  
+                      
+                      "NPHS1",   # PODO
+                      "NPHS2",   # PODO
+                      "PODXL",   # PODO
+                     
+                      
+                      "PTPRO",   # PODO
+                      
+                      "CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                   
+                      
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                     
+                      
+                      
+                      
+                      "SLC12A3", # DT
+                      
+                      "RHBG",    # DT
+                      
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                    
+                      
+                      
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                      "UMOD",
+                     "EMX1",    # CNT
+                     "GATA3",   # DT, PC, UE
+                     
+            
+                      "TMEM52B", # CNT, DT
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                      
+                      
+                     
+                      
+                 
+                     
+                      
+                      
+                      
+                      
+                      "PDGFRA", # Int
+                      "PDGFRB", # Int
+                      "DCN",    # Int
+                      "POSTN",  # Int
+                      "MEIS1",  # Int
+                      "MEIS2",  # Int
+                      "MEIS3",  # Int
+                      
+                      "MKI67", #prolif
+                      "TOP2A"#prolif
+                      
+                      
+                      
+                      
+                      
+)
+
+head(obj)
+
+
+subclass_order <- c("PODO","PEC","PT","LOH", "CNT","PC", "INT")
+
+seurat.obj.f_cleaned$subclass <- factor(obj$subclass, levels = subclass_order)
+DotPlot(seurat.obj.f_cleaned,
+features = markers.to.plot6,
+group.by = "subclass",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+```
+
+
+
+
+```{r}
+qsave(seurat.obj.f_cleaned, here("Outputs","TrypCAPIntegratedAnnotated.qs"))
+rm(obj, seurat.obj.f_cleaned )
+```
+
 
 
 # **Tryp vs. CAP Comparision**
@@ -2257,7 +2592,11 @@ p1 <- DimPlot(trypannotated)
 p2 <- DimPlot(capannotated)
 cowplot::plot_grid(p1, p2, ncol = 2, scale = .85) 
 ```
+
+
 ## 01 Cell Type Porportions
+
+
 ```{r echo=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
 library(ggplot2)
 library(dplyr)
@@ -2607,380 +2946,6 @@ gc()
 
 
 
-# **Integration of CAP and TRYP **
-```{r echo=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
-# Core packages
-library(Seurat)
-library(qs)
-library(ggplot2)
-library(patchwork)
-
-# 1) Load your Seurat objects from .qs
-TRYP <- qread(here("Outputs","TrypAnnotated.qs"))
-CAP  <- qread(here("Outputs","CAPAnnotated.qs"))
-
-# 2) Sanity: make sure they both use the same assay name (typically "RNA")
-DefaultAssay(TRYP) <- "RNA"
-DefaultAssay(CAP)  <- "RNA"
-
-# 3) Make cell names unique and add a batch label
-TRYP <- RenameCells(TRYP, add.cell.id = "TRYP")
-CAP  <- RenameCells(CAP,  add.cell.id = "CAP")
-
-TRYP$batch <- "TRYP"
-CAP$batch  <- "CAP"
-
-# (Optional but recommended) Keep overlapping features to avoid feature-mismatch noise
-common_features <- intersect(rownames(TRYP), rownames(CAP))
-TRYP <- subset(TRYP, features = common_features)
-CAP  <- subset(CAP,  features = common_features)
-
-# 4) Merge into ONE object
-obj <- merge(TRYP, y = CAP)
-DefaultAssay(obj) <- "RNA"
-
-
-# 2) If the merged assay *already* contains split layers like counts.1/data.2, JOIN first
-#    (This makes the assay single-layer again so we can split exactly once by 'batch')
-if (length(Layers(obj[["RNA"]])) > 3 || any(grepl("\\.\\d+$", Layers(obj[["RNA"]])))) {
-  message("Joining pre-existing per-batch layers in merged object...")
-  obj[["RNA"]] <- JoinLayers(obj[["RNA"]])
-}
-
-# 3) Now split exactly once by your batch metadata, and only for raw/normalized matrices
-#    (don't layer scale.data unless you really want to)
-obj[["RNA"]] <- split(
-  obj[["RNA"]],
-  f      = obj$batch,
-  layers = c("counts","data")
-)
-
-
-
-##############SANITY CHECK###############
-# Expect something like: "TRYP", "CAP"
-Layers(obj[["RNA"]])
-
-# Compare to unique batches:
-sort(unique(obj$batch))
-
-
-# Per-batch counts from metadata
-table(obj$batch)
-
-# Per-layer cell counts from matrices (use 'layer=' in Seurat v5)
-sapply(Layers(obj[["RNA"]]), function(L) {
-  ncol(GetAssayData(obj, assay = "RNA", layer = L))  # columns = cells
-})
-
-# Per-batch counts from metadata
-table(obj$batch)
-
-# Per-layer cell counts from matrices (use 'layer=' in Seurat v5)
-sapply(Layers(obj[["RNA"]]), function(L) {
-  ncol(GetAssayData(obj, assay = "RNA", layer = L))  # columns = cells
-})
-#########################################################
-
-
-DefaultAssay(obj) <- "RNA"
-
-
-# 6) Run a quick unintegrated PCA/UMAP (optional, for comparison)
-obj <- NormalizeData(obj)
-obj <- FindVariableFeatures(obj)
-obj <- ScaleData(obj)
-obj <- RunPCA(obj)
-obj <- FindNeighbors(obj, dims = 1:30, reduction = "pca")
-obj <- FindClusters(obj, resolution = 0.6, cluster.name = "unintegrated_clusters")
-obj <- RunUMAP(obj, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated")
-
-p_unint <- DimPlot(obj, reduction = "umap.unintegrated", group.by = c("batch", "unintegrated_clusters"))
-
-
-# 7) INTEGRATE the layers (CCA), producing a shared low-dim space
-obj <- IntegrateLayers(
-  object        = obj,
-  method        = CCAIntegration,
-  orig.reduction= "pca",
-  new.reduction = "integrated.sct",
-  verbose       = FALSE
-)
-
-# 8) Re-join layers (so downstream functions that expect a single matrix behave as usual)
-obj[["RNA"]] <- JoinLayers(obj[["RNA"]])
-rm(TRYP, CAP)
-# 9) Neighbors/Clusters/UMAP on the integrated space
-obj <- FindNeighbors(obj, reduction = "integrated.sct", dims = 1:45)
-obj <- FindClusters(obj, resolution = 7)
-obj <- RunUMAP(obj, dims = 1:45, reduction = "integrated.sct")
-
-# 10) Plots
-p_unint <- DimPlot(obj, reduction = "umap.unintegrated", group.by = c("batch", "unintegrated_clusters"))
-print(p_unint)
-
-p_int1 <- DimPlot(obj, reduction = "umap", group.by = "batch")
-p_int2 <- DimPlot(obj, reduction = "umap", group.by = "seurat_clusters", label = TRUE) + NoLegend()
-p_int1 + p_int2
-
-
-
-```
-
-
-
-```{r fig.align='center', fig.height=9, fig.width=14, dpi=300, include=FALSE}
-# Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
-markers.to.plot1 <- c("EYA1",    # NPC
-                      "SIX2",    # NPC
-                      "CITED1",  # NPC
-                      
-                      "NPHS1",   # PODO
-                      "NPHS2",   # PODO
-                      "PODXL",   # PODO
-                      "CLIC5",   # PODO
-                      "MAFBF",   # PODO
-                      "PTPRO",   # PODO
-                      
-                      "CFH",     # PEC
-                      "CLDN1",   # PEC
-         
-                      "SLC22A1", # PT
-                      "SLC22A2", # PT
-                      "SLC22A3", # PT
-                      "SLC22A6", # PT
-                      "SLC22A8", # PT
-                      "SLC34A1", # PT
-                      "LRP2",    # PT
-                      "HNF4A",   # PT
-                      "SLC5A1",  # PT
-                      "SLC5A2",  # PT
-                      "ABCC2",   # PT
-                      "ABCG2",   # PT
-                      "SLC47A1", # PT
-                      
-                      "EMX1",    # CNT
-                      "VDR",     # CNT
-            
-                      "TMEM52B", # CNT, DT
-                      "SLC12A3", # DT
-                      "GATA3",   # DT, PC, UE
-                      "RHBG",    # DT
-                      "TFAP2A",  # DN, DT
-                      "SLC12A1", # DN, LoH
-                      "POU3F3",  # DN
-                      "TFCP2L1", # DN, LoH
-                      
-                      
-                      "SPTSSB",  # LoH
-                      "MECOM",   # LoH
-                      "ESRRG",   # LoH
-                      
-                     
-                      "AQP2",    # PC
-                      "SCNN1G",  # PC
-                      
-                      
-                      "CA2",       # IC
-                      
-                 
-                      "KRT19",   # UE
-                      "FOXQ1",   # UE
-                      
-                      
-                      "WNT11",   # UPC
-                      
-                      
-                      
-                      "PDGFRA", # Int
-                      "PDGFRB", # Int
-                      "DCN",    # Int
-                      "POSTN",  # Int
-                      "MEIS1",  # Int
-                      "MEIS2",  # Int
-                      "MEIS3",  # Int
-                      "MKI67", #prolif
-                      "TOP2A"#prolif
-                      
-                      
-                      
-                      
-                      
-)
-markers.to.plot2 <- c("LRP2",         # PTS1, PTS2, PTS3
-"SLC5A12",      # PTS1
-"SLC13A3",      # PTS2
-"SLC16A9",      # PTS3
-"EPHA7",        # DTL
-"CRYAB",        # DTL
-"SLC12A1",      # TAL1, TAL2, MD
-"CLDN16",       # TAL1
-"CLDN10",       # TAL2
-"NOS1",         # MD
-"SLC12A3",      # DCT1, DCT2
-"EGF",          # DCT1
-"SLC8A1",       # CNT, DCT2
-"AQP2",         # PC
-"SLC4A1",       # ICA
-"KIT",          # ICA
-"SLC26A4",      # ICB
-"NPHS1",        # PODO
-"NCAM1"         # PEC
-                      
-)
-
-Idents(obj) <- obj$seurat_clusters
-
-p1 <- DotPlot(obj,
-features = markers.to.plot1,
-group.by = "seurat_clusters",
-dot.scale = 8,
-dot.min = 0,
-scale.max = 100,
-scale.min = 0,
-col.min = -2.5,
-col.max = 2.5) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  coord_flip() +
-  labs(x = "Gene Features", y = "Clusters")
-
-p1
-
-p2 <- DotPlot(obj,
-features = markers.to.plot2,
-group.by = "seurat_clusters",
-dot.scale = 8,
-dot.min = 0,
-scale.max = 100,
-scale.min = 0,
-col.min = -2.5,
-col.max = 2.5) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  coord_flip() +
-  labs(x = "Gene Features", y = "Clusters")
-
-p2
-```
-
-
-```{r}
-# FeaturePlot(obj, features = c("RPS12", "RPL36","DLG2","OLFML3"), reduction = "umap")
-# FeaturePlot(obj, features = c("CCNB1", "MKI67","PLK1","PCNA", "CHEK1"), reduction = "umap")
-# FeaturePlot(obj, features = c("OLFM3", "TUBA1A", "STMN1"), reduction = "umap")
-# 
-# FeaturePlot(obj, features = c("NPHS1", "PTPRO", "NPHS2"), reduction = "umap")
-# 
-# FeaturePlot(obj, features = c("MKI67", "TOP2A", "CENPF", "PCNA"), reduction = "umap")
-# FeaturePlot(obj, features = c("COL1A1", "COL3A1", "DCN", "LUM", "PDGFRA", "PDGFRB"), reduction = "umap")
-# 
-# 
-# FeaturePlot(obj, features = c("COL1A1", "COL3A1", "DCN", "LUM"), reduction = "umap") # interstitial markers
-# FeaturePlot(obj, features = c("NPHS1", "NPHS2", "SYNPO"), reduction = "umap")        # podocyte markers
-# FeaturePlot(obj, features = c("AQP2", "SCNN1G"), reduction = "umap")        
-```
-
-```{r echo=FALSE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
-# Apply names to the clusters by subclass
-obj@meta.data <- obj@meta.data %>% mutate(subclass = dplyr::case_when(
-seurat_clusters == 0 ~ "INT",
-seurat_clusters == 1 ~ "PODO",
-seurat_clusters == 2 ~ "PODO",
-seurat_clusters == 3 ~ "PT",
-seurat_clusters == 4 ~ "PODO",
-seurat_clusters == 5 ~ "PODO", 
-seurat_clusters == 6 ~ "PODO",
-seurat_clusters == 7 ~ "PODO",
-seurat_clusters == 8 ~ "PODO",
-seurat_clusters == 9 ~ "PODO",
-seurat_clusters == 10 ~ "PODO",
-seurat_clusters == 11 ~ "PODO",
-seurat_clusters == 12 ~ "PODO",
-seurat_clusters == 13 ~ "INT",
-seurat_clusters == 14 ~ "PEC",
-seurat_clusters == 15 ~ "PT",
-seurat_clusters == 16 ~ "PODO",
-seurat_clusters == 17 ~ "PODO",
-seurat_clusters == 18 ~ "INT",
-seurat_clusters == 19 ~ "PODO",
-seurat_clusters == 20 ~ "PODO",
-seurat_clusters == 21 ~ "PT",
-seurat_clusters == 22 ~ "PODO",
-seurat_clusters == 23 ~ "PODO",
-seurat_clusters == 24 ~ "PT",
-seurat_clusters == 25 ~ "PODO",
-seurat_clusters == 26 ~ "PODO",
-seurat_clusters == 27 ~ "INT_prolif",
-seurat_clusters == 28 ~ "PT",
-seurat_clusters == 29 ~ "PODO",
-seurat_clusters == 30 ~ "PODO",
-seurat_clusters == 31 ~ "PT",
-seurat_clusters == 32 ~ "INT",
-seurat_clusters == 33 ~ "PODO",
-seurat_clusters == 34 ~ "INT",
-seurat_clusters == 35 ~ "PODO",
-seurat_clusters == 36 ~ "INT_prolif",
-seurat_clusters == 37 ~ "INT",
-seurat_clusters == 38 ~ "PODO",
-seurat_clusters == 39 ~ "PEC",
-seurat_clusters == 40 ~ "PODO",
-seurat_clusters == 41 ~ "INT",
-seurat_clusters == 42 ~ "CNT",
-seurat_clusters == 43 ~ "PODO",
-seurat_clusters == 44 ~ "PEC",
-seurat_clusters == 45 ~ "INT_prolif",
-seurat_clusters == 46 ~ "DT",
-seurat_clusters == 47 ~ "CNT",
-seurat_clusters == 48 ~ "PT",
-seurat_clusters == 49 ~ "PT",
-seurat_clusters == 50 ~ "INT",
-seurat_clusters == 51 ~ "DT",
-seurat_clusters == 52 ~ "INT",
-seurat_clusters == 53 ~ "PODO",
-seurat_clusters == 54 ~ "INT_prolif",
-seurat_clusters == 55 ~ "INT",
-seurat_clusters == 56 ~ "INT",
-seurat_clusters == 57 ~ "PT",
-seurat_clusters == 58 ~ "DT",
-seurat_clusters == 59 ~ "INT",
-seurat_clusters == 60 ~ "INT",
-seurat_clusters == 61 ~ "INT",
-seurat_clusters == 62 ~ "DOUBLET",
-seurat_clusters == 63 ~ "PODO",
-seurat_clusters == 64 ~ "DOUBLET",
-seurat_clusters == 65 ~ "PC",
-seurat_clusters == 66 ~ "PODO",
-seurat_clusters == 67 ~ "PODO",
-seurat_clusters == 68 ~ "CNT",
-seurat_clusters == 69 ~ "PC",
-seurat_clusters == 70 ~ "DT",
-seurat_clusters == 71 ~ "DOUBLET"
-
-
-
-
-))
-
-# Filter out the doublets
-
-seurat.obj.f_cleaned <- subset(obj, subset = subclass == "DOUBLET", invert = TRUE)
-
-subclass_order <- c("PEC","PT","DT", "CNT","PC","PODO", "INT", "INT_prolif" )
-
-seurat.obj.f_cleaned@meta.data$subclass <- factor(seurat.obj.f_cleaned@meta.data$subclass, levels = subclass_order)
-
-# Change the identities to align with new subclass names and make umap
-Idents(seurat.obj.f_cleaned) <- seurat.obj.f_cleaned@meta.data$subclass
-
-DimPlot(seurat.obj.f_cleaned, reduction = "umap", label = TRUE, label.size = 4) +  
-  theme(plot.title = element_text(hjust = 0.5)) +
-  ggtitle(paste0("Subclass Annotation for Integrated Tryp + CAP Data"))
-
-```
-# **Conclusion**
-
-
-
-# **Future Work**
 
 
 
