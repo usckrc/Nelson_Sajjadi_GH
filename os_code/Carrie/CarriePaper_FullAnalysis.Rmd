@@ -1,0 +1,976 @@
+---
+title: "CarrieBulkRNA_FullAnalysis"
+author: "Omid Sajjadi"
+date: "2025-10-23"
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 2
+    toc_float: true
+    number_sections: no
+    theme: bootstrap
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r create folders, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+if (!require("here")) {install.packages("here"); require("here")}
+
+Datasets <- "Datasets"
+Outputs <- "Outputs"
+
+if (!dir.exists(here(Datasets))) {dir.create(here(Datasets))}
+if (!dir.exists(here(Outputs))) {dir.create(here(Outputs))}
+
+```
+
+```{r load packages, error=FALSE, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("Seurat")) {install.packages("Seurat"); require("Seurat")}
+if (!require("patchwork")) {install.packages("patchwork"); require("patchwork")}
+if (!require("cowplot")) {install.packages("cowplot"); require("cowplot")}
+if (!require("ggpubr")) {install.packages("ggpubr"); require("ggpubr")}
+if (!require("plotly")) {install.packages("plotly"); require("plotly")}
+if (!require("knitr")) {install.packages("knitr"); require("knitr")}
+if (!require("htmlwidgets")) {install.packages("htmlwidgets"); require("htmlwidgets")}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")} # for titying up data
+if (!require("RColorBrewer")) {install.packages("RColorBrewer"); require("RColorBrewer")} # for color brewer
+if (!require("sctransform")) {install.packages("sctransform"); require("sctransform")} # for data normalization
+if (!require("openxlsx")) {install.packages("openxlsx"); require("openxlsx")} # to save .xlsx files
+if (!require("SoupX")) {install.packages("SoupX"); require("SoupX")}
+if (!require("readxl")) {install.packages("readxl"); require("readxl")}
+if (!require("hdf5r")) {install.packages("hdf5r"); require("hdf5r")}
+if (!require("qs")) {install.packages("qs"); require("qs")}
+if (!require("glmGamPoi")) {BiocManager::install('glmGamPoi'); require("glmGamPoi")} # for data normalization, sctransform
+if (!require("EnhancedVolcano")) {BiocManager::install('EnhancedVolcano'); require("EnhancedVolcano")} # volcano plot
+if (!require("extrafont")) {BiocManager::install('extrafont'); require("extrafont")}
+if (!require("gt")) {BiocManager::install('gt'); require("gt")} 
+if (!require("ggsankey")) {BiocManager::install('ggsankey'); require("ggsankey")} 
+if (!require("DoubletFinder")) {BiocManager::install('DoubletFinder'); require("DoubletFinder")} 
+if (!require("data.table")) {BiocManager::install('data.table'); require("data.table")} 
+if (!require("tibble")) {BiocManager::install('tibble'); require("tibble")} 
+if (!require("stringr")) {BiocManager::install('stringr'); require("stringr")} 
+if (!require("pheatmap")) {BiocManager::install('pheatmap'); require("pheatmap")} 
+if (!require("SummarizedExperiment")) {BiocManager::install('SummarizedExperiment'); require("SummarizedExperiment")} 
+if (!require("plotly")) {BiocManager::install('plotly'); require("plotly")} 
+if (!require("scatterplot3d")) {BiocManager::install('scatterplot3d'); require("scatterplot3d")} 
+if (!require("pheatmap")) {BiocManager::install('pheatmap'); require("pheatmap")} 
+if (!require("limma")) {install.packages("limma"); library("limma")}
+#if (!require("ComplexHeatmap")) {install.packages("ComplexHeatmap"); library("ComplexHeatmap")}
+
+set.seed(12345)
+here()
+```
+
+
+
+
+# **PCA Plots**
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#LOAD DATA - DATA PROVIDED IS IN .TXT FORMAT
+
+file_name <- here("Datasets","Partek_Carrie_iCD_PKD2_Sep2025_Normalization_Normalized_counts.txt")
+
+# fread() guesses separators; explicitly set sep = "\t" if you like
+dt <- fread(file_name, sep = "\t", header = TRUE, check.names = FALSE)
+
+#Sanity Check
+dim(dt) #the dimensions of the object
+head(dt, 3) #the first rows of the object
+
+
+#if first column isnt called gene_name, this will change it for me - I DIDNT USE THIS HERE JUST HERE FOR THE SAKE OF THE PIPLINE.
+#names(dt)[1] <- "gene_name"
+```
+
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# Remove rows with missing gene names
+dt <- dt %>% filter(!is.na(gene_name) & gene_name != "")
+dim(dt)
+
+
+
+# If gene names are duplicated, decide a policy (keep the highest mean, sum, or first).
+# Here we keep the row with the highest mean across samples:
+dt <- dt %>%
+  rowwise() %>%
+  mutate(.row_mean = mean(c_across(-gene_name), na.rm = TRUE)) %>%
+  ungroup() %>%
+  arrange(desc(.row_mean)) %>%
+  distinct(gene_name, .keep_all = TRUE) %>%
+  select(-.row_mean)
+dim(dt)
+
+
+# Convert to matrix with gene names as rownames
+mat <- dt %>% column_to_rownames("gene_name") %>% as.matrix()
+# Ensure numeric
+mode(mat) <- "numeric"
+
+```
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# sanity checks
+stopifnot(all(is.finite(mat)))
+range(mat)
+colSums(is.na(mat))
+
+dim(dt)
+dim(mat) # columns should be 1 less than dt
+head(mat, 3)
+colSums(is.na(mat)) #tell if we have NAs
+
+
+sum(is.na(mat))                 # should be 0 ideally
+```
+
+
+- I have 19,217 genes (rows) and 12 samples (columns) here.
+
+
+
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#here I am making meta data to organize my data
+
+samples <- colnames(mat)
+samples
+
+
+sample_df <- tibble(
+  sample_id = samples,
+  group = str_extract(samples, "^[A-Za-z0-9_]+(?=_D)"),
+  day   = str_extract(samples, "D\\d+"),
+  rep   = str_extract(samples, "(?<=_)\\d+$")
+)
+sample_df
+
+sample_df <- sample_df %>%
+  mutate(condition = if_else(group == "WP3", "WT", "KO"))
+sample_df
+
+
+table(sample_df$group)
+```
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+
+#here is where I am calculating the PCA and then adding it to the metadata
+
+pca <- prcomp(t(mat), scale. = TRUE)
+
+pca_df <- as.data.frame(pca$x) %>%
+  rownames_to_column("sample_id") %>%
+  left_join(sample_df, by = "sample_id")
+
+pca_df <- pca_df %>%
+  dplyr::mutate(
+    condition = dplyr::case_when(
+      group == "WP3" ~ "WT",
+      group %in% c("PKD_10", "PKD_11") ~ "KO"
+    )
+  )
+pca_df
+```
+
+
+
+```{r echo=TRUE, fig.align='center', fig.height=5, fig.width=10, message=FALSE, warning=FALSE, dpi=300, paged.print=FALSE}
+var_explained <- (pca$sdev^2 / sum(pca$sdev^2)) * 100
+x_lab <- paste0("PC1 (", round(var_explained[1], 1), "%)")
+y_lab <- paste0("PC2 (", round(var_explained[2], 1), "%)")
+
+
+pca_df$group <- factor(pca_df$group,
+                       levels = c("WP3", "PKD_10", "PKD_11"))  # WP3 = WT
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = group, shape = day)) +
+    geom_point(size = 7, alpha = 0.75) +
+    scale_color_manual(
+    values = c(
+      "WP3"     = "#E0BA3E",  # WT first
+      "PKD_10"  = "#529DDA", 
+      "PKD_11"  = "#7570b3"
+    ),
+    name = "Experimental Group",
+    labels = c("WT", "PKD10", "PKD11"),
+    guide = guide_legend(order = 1)
+  )+
+    scale_shape_manual(
+    values = c("D12" = 16, "D16" = 17),
+    name = "Timepoint",
+    labels = c("Day 12", "Day 16"),
+    guide = guide_legend(order = 2)
+  ) +
+  theme_minimal(base_size = 14, base_family = "Helvetica Neue Light")+
+  theme(
+    legend.position = "right",          # move legend below plot
+    legend.box = "vertical",           # horizontal layout
+    plot.title = element_text(size = 16, hjust = 0.5, face = "bold"),  # center title
+    axis.title = element_text(size = 12, face = "bold"),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 10),
+    
+    panel.grid.major = element_line(color = "grey80", linewidth = 0.2),
+    panel.grid.minor = element_line(color = "grey90", linewidth = 0.2),
+  ) 
+ #labs(title = "PCA of RNA-seq samples", x = x_lab, y = y_lab)
+  
+```
+
+
+```{r echo=TRUE, fig.align='center', fig.height=5, fig.width=10, message=FALSE, warning=FALSE, dpi=300}
+var_explained <- (pca$sdev^2 / sum(pca$sdev^2)) * 100
+x_lab <- paste0("PC1 (", round(var_explained[1], 1), "%)")
+y_lab <- paste0("PC2 (", round(var_explained[2], 1), "%)")
+
+
+pca_df$condition <- factor(pca_df$condition,
+                           levels = c("WT", "KO"))
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = condition, shape = day)) +
+  geom_point(size = 7, alpha = 0.75) +
+  scale_color_manual(
+    values = c( "WT" = "#E0BA3E",
+                "KO" = "#529DDA"),
+    name = "Condition",
+    labels = c("WT", "PKD")
+  ) +
+  scale_shape_manual(
+    values = c("D12" = 16, "D16" = 17),
+    name = "Timepoint",
+    labels = c("Day 12", "Day 16")
+  ) +
+  guides(
+    color = guide_legend(order = 1),
+    shape = guide_legend(order = 2)
+  ) +
+  theme_minimal(base_size = 14, base_family = "Helvetica Neue Light") +
+  theme(
+    legend.position = "right",
+    legend.box = "vertical",
+    plot.title = element_text(size = 16, hjust = 0.5, face = "bold"),
+    axis.title = element_text(size = 12, face = "bold"),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 10),
+    panel.grid.major = element_line(color = "grey80", linewidth = 0.2),
+    panel.grid.minor = element_line(color = "grey90", linewidth = 0.2)
+  ) 
+   #labs(title = "PCA of RNA-seq samples", x = x_lab, y = y_lab)
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+ggplot(pca_df, aes(x = PC1, y = PC2,
+                   color = condition,
+                   shape = day,
+                   size = PC3)) +
+  geom_point(alpha = 0.75) +
+  scale_size_continuous(name = "PC3 Value")
+
+ggplot(pca_df, aes(x = PC1, y = PC2,
+                   color = condition,
+                   shape = day,
+                   alpha = PC3)) +
+  geom_point(size = 4) +
+  scale_alpha_continuous(name = "PC3 Value")
+
+
+pca_df$PC3_group <- cut(pca_df$PC3, breaks = 4)
+
+ggplot(pca_df, aes(PC1, PC2, color = condition, shape = day)) +
+  geom_point(size = 4, alpha = 0.8) +
+  facet_wrap(~ PC3_group) +
+  labs(title = "PC3 Binned into Quartiles")
+```
+
+
+```{r echo=TRUE, fig.align='center', fig.height=5, fig.width=10, message=FALSE, warning=FALSE, dpi=300, paged.print=FALSE}
+pc3_lab <- paste0("PC3 (", round(var_explained[3], 1), "%)")
+
+ggplot(pca_df, aes(x = PC1, y = PC2,
+                   color = condition,
+                   shape = day,
+                   size = PC3)) +
+  geom_point(alpha = 0.75) +
+  scale_color_manual(
+    values = c("WT" = "#E0BA3E", "KO" = "#529DDA"),
+    name = "Condition",
+    labels = c("WT", "PKD")
+  ) +
+  scale_shape_manual(
+    values = c("D12" = 16, "D16" = 17),
+    name = "Timepoint",
+    labels = c("Day 12", "Day 16")
+  ) +
+  scale_size_continuous(name = pc3_lab) +  # PC3 % here
+  guides(
+    color = guide_legend(order = 1),
+    shape = guide_legend(order = 2),
+    size  = guide_legend(order = 3)
+  ) +
+  theme_minimal(base_size = 14, base_family = "Helvetica Neue Light") +
+  theme(
+    legend.position = "right",
+    legend.box = "vertical",
+    plot.title = element_text(size = 16, hjust = 0.5, face = "bold"),
+    axis.title = element_text(size = 12, face = "bold"),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 10),
+    panel.grid.major = element_line(color = "grey80", linewidth = 0.2),
+    panel.grid.minor = element_line(color = "grey90", linewidth = 0.2)
+  ) +
+  labs(
+    title = "PCA of RNA-seq samples",
+    x = x_lab,
+    y = y_lab
+  )
+```
+
+
+
+```{r eval=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+var_explained <- (pca$sdev^2 / sum(pca$sdev^2)) * 100
+
+x_lab <- paste0("PC1 (", round(var_explained[1], 1), "%)")
+y_lab <- paste0("PC2 (", round(var_explained[2], 1), "%)")
+z_lab <- paste0("PC3 (", round(var_explained[3], 1), "%)")
+
+
+plot_ly(
+  data = pca_df,
+  x = ~PC1, y = ~PC2, z = ~PC3,
+  color = ~condition,
+  colors = c("WT" = "#E0BA3E", "KO" = "#529DDA"),
+  symbol = ~day,
+  symbols = c("D12" = "circle", "D16" = "diamond"),
+  text = ~sample_id,  # hover info
+  hoverinfo = "text",
+  marker = list(size = 8, opacity = 0.75)
+) %>%
+  layout(
+    title = list(
+      text = "PCA of RNA-seq samples (3D)",
+      x = 0.5,  # center title
+      font = list(family = "Helvetica Neue Light", size = 18)
+    ),
+    scene = list(
+      xaxis = list(title = x_lab, titlefont = list(family = "Helvetica Neue Light")),
+      yaxis = list(title = y_lab, titlefont = list(family = "Helvetica Neue Light")),
+      zaxis = list(title = z_lab, titlefont = list(family = "Helvetica Neue Light"))
+    ),
+    legend = list(
+      title = list(text = "<b>Condition</b>", font = list(family = "Helvetica Neue Light")),
+      font = list(size = 12, family = "Helvetica Neue Light"),
+      orientation = "v",
+      x = 1.05,
+      y = 0.8
+    )
+  )
+```
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, paged.print=FALSE}
+var_explained <- (pca$sdev^2 / sum(pca$sdev^2)) * 100
+
+x_lab <- paste0("PC1 (", round(var_explained[1], 1), "%)")
+y_lab <- paste0("PC2 (", round(var_explained[2], 1), "%)")
+z_lab <- paste0("PC3 (", round(var_explained[3], 1), "%)")
+scatterplot3d(
+  x = pca_df$PC1,
+  y = pca_df$PC2,
+  z = pca_df$PC3,
+  color = ifelse(pca_df$condition == "WT", "#E0BA3E", "#529DDA"),
+  pch = ifelse(pca_df$day == "D12", 16, 17),
+  xlab = x_lab,
+  ylab = y_lab,
+  zlab = z_lab,
+  main = "3D PCA of RNA-seq samples"
+)
+```
+
+
+
+
+
+
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+cor_mat <- cor(mat, method = "pearson")
+pheatmap(cor_mat,
+         annotation_col = data.frame(
+           group = sample_df$group,
+           row.names = sample_df$sample_id
+         ),
+         main = "Sample-to-sample Pearson correlation")
+```
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+d <- dist(t(mat))  # compute Euclidean distance between samples
+hc <- hclust(d)        # build hierarchical cluster tree
+plot(hc, labels = colnames(mat), main = "Clustering of samples")
+```
+
+
+
+# **DEG**
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(limma)
+mat
+# ---- STEP 1: Prepare expression matrix ----
+# Ensure log-transformation if not already
+expr_mat <- log2(mat + 1)
+expr_mat
+# ---- STEP 2: Update metadata ----
+meta <- sample_df %>%
+  mutate(
+    group_day = paste0(condition, "_", day)
+  )
+meta
+# Reorder to match columns of expression matrix
+meta <- meta[match(colnames(expr_mat), meta$sample_id), ]
+
+# ---- STEP 3: Create design matrix ----
+design <- model.matrix(~ 0 + group_day, data = meta)
+design
+colnames(design) <- levels(factor(meta$group_day))
+design
+meta
+```
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+## D12: PKD vs WT 
+# Contrast: PKD_D12 vs WT_D12
+contrast_day12 <- makeContrasts(KO_D12 - WT_D12, levels = design)
+
+fit_day12 <- lmFit(expr_mat, design)
+fit_day12 <- contrasts.fit(fit_day12, contrast_day12)
+fit_day12 <- eBayes(fit_day12)
+
+deg_day12 <- topTable(fit_day12, number = Inf, adjust.method = "BH")
+head(deg_day12)
+```
+
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+## D16: PKD vs WT 
+# Contrast: PKD_D16 vs WT_D16
+contrast_day16 <- makeContrasts(KO_D16 - WT_D16, levels = design)
+
+fit_day16 <- lmFit(expr_mat, design)
+fit_day16 <- contrasts.fit(fit_day16, contrast_day16)
+fit_day16 <- eBayes(fit_day16)
+
+deg_day16 <- topTable(fit_day16, number = Inf, adjust.method = "BH")
+head(deg_day16)
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+## Combined Time Points: PKD vs WT
+meta
+meta$condition <- factor(meta$condition, levels = c("WT", "KO"))
+design2 <- model.matrix(~ 0 + condition, data = meta)
+colnames(design2) <- levels(meta$condition)
+
+contrast_combined <- makeContrasts(KO - WT, levels = design2)
+
+fit_combined <- lmFit(expr_mat, design2)
+fit_combined <- contrasts.fit(fit_combined, contrast_combined)
+fit_combined <- eBayes(fit_combined)
+
+deg_combined <- topTable(fit_combined, number = Inf, adjust.method = "BH")
+head(deg_combined)
+```
+
+
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+## CSV file 
+# # Function to filter, select top genes, and save as data frame
+# get_top_genes <- function(deg_table, name) {
+#   # Ensure consistent column names
+#   deg_table <- deg_table %>%
+#     dplyr::rename(logFC = logFC, p_val_adj = adj.P.Val) %>%
+#     dplyr::mutate(Gene = rownames(deg_table))
+#   
+#   # Filter by thresholds
+#   filtered <- deg_table %>%
+#     dplyr::filter(abs(logFC) >= 1 & p_val_adj <= 0.5)
+#   
+#   # Separate up and down
+#   up_genes <- filtered %>%
+#     dplyr::filter(logFC > 0) %>%
+#     dplyr::arrange(desc(logFC)) %>%
+#     dplyr::slice_head(n = 150)
+#   
+#   down_genes <- filtered %>%
+#     dplyr::filter(logFC < 0) %>%
+#     dplyr::arrange(logFC) %>%
+#     dplyr::slice_head(n = 150)
+#   
+#   # Combine top 300 (150 up + 150 down)
+#   top300 <- bind_rows(up_genes, down_genes) %>%
+#     dplyr::arrange(desc(logFC))
+#   
+#   # Save as CSV
+#   file_out <- here("Outputs", paste0("Top300_DEG_", name, ".csv"))
+#   write.csv(top300, file_out, row.names = FALSE)
+#   
+#   message(paste("✅ Saved:", file_out))
+#   return(top300)
+# }
+# 
+# # Apply for each comparison
+# top_day12 <- get_top_genes(deg_day12, "Day12")
+# top_day16 <- get_top_genes(deg_day16, "Day16")
+# top_combined <- get_top_genes(deg_combined, "Combined")
+# 
+# # Optional: combine into one big sheet for reference
+# write.xlsx(list(
+#   Top300_Day12 = top_day12,
+#   Top300_Day16 = top_day16,
+#   Top300_Combined = top_combined
+# ), file = here("Outputs", "Top300_DEG_AllComparisons.xlsx"))
+```
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+sample_df <- sample_df %>%
+  mutate(condition = case_when(
+    group == "WP3" ~ "Healthy",
+    group %in% c("PKD_10", "PKD_11") ~ "PKD"
+  ))
+#nrow(mat)
+log_mat <- log2(mat + 1)
+# Always realign metadata to expression matrix
+sample_df <- sample_df[match(colnames(log_mat), sample_df$sample_id), ]
+stopifnot(all(colnames(log_mat) == sample_df$sample_id))
+
+# Build design
+sample_df <- sample_df %>%
+  mutate(condition = factor(condition, levels = c("Healthy", "PKD")))
+
+design <- model.matrix(~ 0 + condition, data = sample_df)
+colnames(design) <- c("Healthy", "PKD")
+
+# Fit model
+fit <- lmFit(log_mat, design)
+contrast.matrix <- makeContrasts(PKD - Healthy, levels = design)
+fit2 <- contrasts.fit(fit, contrast.matrix)
+fit2 <- eBayes(fit2)
+deg_results <- topTable(fit2, coef = 1, number = Inf, sort.by = "P")
+
+
+head(deg_results, 10)
+#write.xlsx(deg_results, "DEG_PKD_vs_Healthy.xlsx", rowNames = TRUE)
+#nrow(deg_results)
+```
+
+
+## Volcano Plots
+
+```{r echo=FALSE, fig.align='center', fig.height=6, fig.width=10, message=FALSE, warning=FALSE, dpi=300, paged.print=FALSE}
+genes_D12 <- c("CHCHD2", "MKI67", "CDC25C", "CDC20", "IL17C", "COL22A1", "CYP2C9", "CCL4", "COL12A1", "CBR1")
+
+ # Define thresholds
+p_cutoff <- 0.05
+fc_cutoff <- 1
+
+# Assign colors based on significance and direction
+keyvals <- ifelse(
+  deg_day12$P.Value < p_cutoff & deg_day12$logFC > fc_cutoff, "red",        # Up in PKD
+  ifelse(deg_day12$P.Value < p_cutoff & deg_day12$logFC < -fc_cutoff, "blue",  # Up in Healthy
+         "grey70")  # Not significant
+)
+
+# Count number of up- and down-regulated genes based on the same cutoffs
+up_genes <- sum(deg_day12$P.Value < p_cutoff & deg_day12$logFC > fc_cutoff)
+down_genes <- sum(deg_day12$P.Value < p_cutoff & deg_day12$logFC < -fc_cutoff)
+not_sig <- sum(!(deg_day12$P.Value < p_cutoff & abs(deg_day12$logFC) > fc_cutoff))
+
+cat("Upregulated genes:", up_genes, "\n")
+cat("Downregulated genes:", down_genes, "\n")
+cat("Not significant:", not_sig, "\n")
+
+
+names(keyvals)[keyvals == "red"] <- paste0("Up Regulated (", up_genes, "genes )")
+names(keyvals)[keyvals == "blue"] <- paste0("Down Regulated (", down_genes, "genes )")
+names(keyvals)[keyvals == "grey70"] <- paste0("Not Significant (", not_sig, "genes )")
+
+p <- EnhancedVolcano(
+  deg_day12,
+  lab = rownames(deg_day12),
+  x = 'logFC',
+  y = 'P.Value',
+  title = 'Day 12: PKD vs WT',
+  pCutoff = p_cutoff,
+  FCcutoff = fc_cutoff,
+  caption = NULL, 
+  subtitle = NULL,
+  selectLab = genes_D12,
+  pointSize = 2.5,
+  labSize = 2.5,
+  boxedLabels = TRUE,
+  drawConnectors = TRUE,
+  widthConnectors = 0.5,
+  colCustom = keyvals,
+  legendPosition = "right",
+  legendLabSize = 11,
+  legendIconSize = 3,
+  legendLabels = c( "" , "Up Regulated", "Down Regulated")
+)
+d12_Volcano <- p + theme(
+  text = element_text(family = "Helvetica Neue Light"),
+  plot.title = element_text(family = "Helvetica Neue Light", face = "bold", size = 18),
+  plot.subtitle = element_text(family = "Helvetica Neue Light", size = 14),
+  axis.title = element_text(family = "Helvetica Neue Light", size = 14),
+  axis.text = element_text(family = "Helvetica Neue Light", size = 12)
+)
+d12_Volcano
+
+
+
+```
+
+
+```{r echo=FALSE, fig.align='center', fig.height=6, fig.width=10, message=FALSE, warning=FALSE, dpi=300, paged.print=FALSE}
+genes_D16 <- c("CHCHD2", "GJA1", "KCNE3", "SLC26A9", "KCNJ2", "CXCL14", "AQP2", "CCL28", "COL12A1", "CBR1", "KCNH2", "SLC12A3", "COL1A2", "COL22A1", "NID2", "CCL4")
+
+ # Define thresholds
+p_cutoff <- 0.05
+fc_cutoff <- 1
+
+# Assign colors based on significance and direction
+keyvals <- ifelse(
+  deg_day16$P.Value < p_cutoff & deg_day16$logFC > fc_cutoff, "red",        # Up in PKD
+  ifelse(deg_day16$P.Value < p_cutoff & deg_day16$logFC < -fc_cutoff, "blue",  # Up in Healthy
+         "grey70")  # Not significant
+)
+
+# Count number of up- and down-regulated genes based on the same cutoffs
+up_genes <- sum(deg_day16$P.Value < p_cutoff & deg_day16$logFC > fc_cutoff)
+down_genes <- sum(deg_day16$P.Value < p_cutoff & deg_day16$logFC < -fc_cutoff)
+not_sig <- sum(!(deg_day16$P.Value < p_cutoff & abs(deg_day16$logFC) > fc_cutoff))
+
+cat("Upregulated genes:", up_genes, "\n")
+cat("Downregulated genes:", down_genes, "\n")
+cat("Not significant:", not_sig, "\n")
+
+names(keyvals)[keyvals == "red"] <- paste0("Up Regulated (", up_genes,"genes )")
+names(keyvals)[keyvals == "blue"] <- paste0("Down Regulated (", down_genes, "genes )")
+names(keyvals)[keyvals == "grey70"] <- paste0("Not Significant (", not_sig, "genes )")
+
+library(EnhancedVolcano)
+
+p <- EnhancedVolcano(
+  deg_day16,
+  lab = rownames(deg_day16),
+  x = 'logFC',
+  y = 'P.Value',
+  title = 'Day 16: PKD vs WT',
+  pCutoff = p_cutoff,
+  FCcutoff = fc_cutoff,
+  caption = NULL, 
+  subtitle = NULL,
+  selectLab = genes_D16,
+  pointSize = 2.5,
+  labSize = 2.5,
+  boxedLabels = TRUE,
+  drawConnectors = TRUE,
+  widthConnectors = 0.3,
+  colCustom = keyvals,
+  legendPosition = "right",
+  legendLabSize = 11,
+  legendIconSize = 3,
+  legendLabels = c( "" , "Down Regulated", "Up Regulated")
+)
+d16_Volcano <- p + theme(
+  text = element_text(family = "Helvetica Neue Light"),
+  plot.title = element_text(family = "Helvetica Neue Light", face = "bold", size = 18),
+  plot.subtitle = element_text(family = "Helvetica Neue Light", size = 14),
+  axis.title = element_text(family = "Helvetica Neue Light", size = 14),
+  axis.text = element_text(family = "Helvetica Neue Light", size = 12)
+)
+
+d16_Volcano
+```
+
+```{r echo=FALSE, fig.align='center', fig.height=9, fig.width=20, message=FALSE, warning=FALSE, dpi=300, paged.print=FALSE}
+d12_Volcano + d16_Volcano
+```
+
+
+## Heat plots
+
+```{r}
+sig_deg <- deg_results %>%
+  dplyr::filter(adj.P.Val < 0.05 & abs(logFC) > 1)
+```
+
+
+```{r, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300, paged.print=FALSE}
+top_genes <- rownames(sig_deg[order(sig_deg$adj.P.Val), ])[1:50]
+mat_top <- log_mat[top_genes, ]
+annotation_col <- data.frame(
+  Condition = sample_df$condition,
+  Day = sample_df$day
+)
+rownames(annotation_col) <- sample_df$sample_id
+ann_colors <- list(
+  Condition = c(Healthy = "#E0BA3E", PKD = "#529DDA"),
+  Day = c(D12 = "#b3b3b3", D16 = "#4d4d4d")
+)
+my_colors <- colorRampPalette(c("blue", "white", "red"))(100)
+mat_scaled <- t(scale(t(mat_top)))
+library(pheatmap)
+
+pheatmap(
+  mat_scaled,
+  color = my_colors,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  annotation_col = annotation_col,
+  annotation_colors = ann_colors,
+  fontsize = 10,
+  fontsize_row = 8,
+  border_color = NA,
+  scale = "none",
+  main = "Top 50 Differentially Expressed Genes (PKD vs Healthy)",
+  clustering_method = "ward.D2",
+  show_rownames = TRUE,
+  show_colnames = FALSE,
+  labels_row = rownames(mat_scaled),
+  labels_col = colnames(mat_scaled),
+  fontfamily = "Helvetica Neue Light"
+)
+```
+
+
+
+```{r,  fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300, paged.print=FALSE}
+
+# --- Gene list for Day 12 volcano highlights ---
+genes_D12 <- c(
+  "CHCHD2", "MKI67", "CDC25C", "CDC20", "IL17C", "COL22A1",
+  "CYP2C9", "CCL4", "COL12A1", "CBR1"
+)
+
+# --- Normalize case to ensure matching ---
+rownames(log_mat) <- toupper(rownames(log_mat))
+genes_upper <- toupper(genes_D12)
+
+# --- Subset only genes that exist ---
+genes_found <- genes_upper[genes_upper %in% rownames(log_mat)]
+cat("✅ Genes found:", paste(genes_found, collapse = ", "), "\n")
+
+# --- Subset metadata to only Day 12 samples ---
+sample_df_d12 <- sample_df %>% dplyr::filter(day == "D12")
+sample_ids_d12 <- sample_df_d12$sample_id
+
+# --- Subset expression matrix to Day 12 samples and selected genes ---
+mat_subset_d12 <- log_mat[genes_found, sample_ids_d12, drop = FALSE]
+
+# --- Scale by gene (z-score) ---
+mat_scaled_d12 <- t(scale(t(mat_subset_d12)))
+
+# --- Build annotation table for columns (samples) ---
+annotation_col <- data.frame(
+  Condition = sample_df_d12$condition
+)
+rownames(annotation_col) <- sample_df_d12$sample_id
+
+# --- Define colors ---
+ann_colors <- list(
+  Condition = c(Healthy = "#E0BA3E", PKD = "#529DDA")
+)
+
+# --- Draw the heatmap ---
+p_d12 <- pheatmap(
+  mat_scaled_d12,
+  color = colorRampPalette(c("blue", "white", "red"))(100),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  annotation_col = annotation_col,
+  annotation_colors = ann_colors,
+  fontsize_row = 10,
+  fontsize_col = 10,
+  border_color = NA,
+  scale = "none",
+  main = "Day 12: PKD vs Healthy",
+  clustering_method = "ward.D2",
+  show_rownames = TRUE,
+  show_colnames = FALSE,
+  labels_row = rownames(mat_scaled_d12),
+  labels_col = colnames(mat_scaled_d12),
+  fontfamily = "Helvetica Neue Light"
+)
+
+```
+
+
+```{r,  fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300, paged.print=FALSE}
+
+# --- Gene list for Day 16 volcano highlights ---
+genes_D16 <- c(
+  "CHCHD2", "GJA1", "KCNE3", "SLC26A9", "KCNJ2", "CXCL14", "AQP2", "CCL28",
+  "COL12A1", "CBR1", "KCNH2", "SLC12A3", "COL1A2", "COL22A1", "NID2", "CCL4"
+)
+
+# --- Normalize case to ensure matching ---
+rownames(log_mat) <- toupper(rownames(log_mat))
+genes_upper <- toupper(genes_D16)
+
+# --- Subset only genes that exist ---
+genes_found <- genes_upper[genes_upper %in% rownames(log_mat)]
+cat("✅ Genes found:", paste(genes_found, collapse = ", "), "\n")
+
+# --- Subset metadata to only Day 16 samples ---
+sample_df_d16 <- sample_df %>% dplyr::filter(day == "D16")
+sample_ids_d16 <- sample_df_d16$sample_id
+
+# --- Subset expression matrix to Day 16 samples and selected genes ---
+mat_subset_d16 <- log_mat[genes_found, sample_ids_d16, drop = FALSE]
+
+# --- Scale by gene (z-score) ---
+mat_scaled_d16 <- t(scale(t(mat_subset_d16)))
+
+# --- Build annotation table for columns (samples) ---
+annotation_col <- data.frame(
+  Condition = sample_df_d16$condition
+)
+rownames(annotation_col) <- sample_df_d16$sample_id
+
+# --- Define colors ---
+ann_colors <- list(
+  Condition = c(Healthy = "#E0BA3E", PKD = "#529DDA")
+)
+
+# --- Draw the heatmap ---
+pheatmap(
+  mat_scaled_d16,
+  color = colorRampPalette(c("blue", "white", "red"))(100),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  annotation_col = annotation_col,
+  annotation_colors = ann_colors,
+  fontsize_row = 10,
+  fontsize_col = 10,
+  border_color = NA,
+  scale = "none",
+  main = "Day 16: PKD vs Healthy",
+  clustering_method = "ward.D2",
+  show_rownames = TRUE,
+  show_colnames = FALSE,
+  labels_row = rownames(mat_scaled_d16),
+  labels_col = colnames(mat_scaled_d16),
+  fontfamily = "Helvetica Neue Light"
+)
+```
+
+
+
+
+
+
+
+
+```{r, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300, paged.print=FALSE}
+# Simplify condition (merge PKD_10 and PKD_11 into PKD)
+sample_df <- sample_df %>%
+  mutate(
+    condition = case_when(
+      group == "WP3" ~ "Healthy",
+      group %in% c("PKD_10", "PKD_11") ~ "PKD"
+    ),
+    condition_day = paste0(condition, "_", day)
+  )
+
+# Define the order you want to appear in the heatmap
+sample_df <- sample_df %>%
+  mutate(condition_day = factor(condition_day,
+                                levels = c("Healthy_D12", "Healthy_D16",
+                                           "PKD_D12", "PKD_D16")))
+
+# Now reorder your metadata according to condition_day and replicate within day
+sample_df <- sample_df %>%
+  arrange(condition_day, condition, day, rep)
+
+# Reorder your scaled expression matrix columns to match sample_df order
+mat_scaled <- mat_scaled[, sample_df$sample_id, drop = FALSE]
+
+# Confirm order
+colnames(mat_scaled)
+
+
+annotation_col <- data.frame(
+  Condition = sample_df$condition,
+  Day = sample_df$day
+)
+rownames(annotation_col) <- sample_df$sample_id
+
+# Reorder annotation table to match the matrix
+annotation_col <- annotation_col[colnames(mat_scaled), ]
+
+
+ann_colors <- list(
+  Condition = c(Healthy = "#E0BA3E", PKD = "#529DDA"),
+  Day = c(D12 = "#b3b3b3", D16 = "#4d4d4d")
+)
+library(pheatmap)
+
+pheatmap(
+  mat_scaled,
+  color = colorRampPalette(c("blue", "white", "red"))(100),
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,   # keep your custom column order
+  annotation_col = annotation_col,
+  annotation_colors = ann_colors,
+  fontsize = 10,
+  border_color = NA,
+  main = "Top 50 DEGs (Healthy vs PKD, by Day)",
+  show_rownames = TRUE,
+  show_colnames = FALSE,
+  
+)
+```
+
+
+
+
+
+
+
+
+
