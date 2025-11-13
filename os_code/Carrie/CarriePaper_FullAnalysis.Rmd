@@ -91,6 +91,12 @@ head(dt, 3) #the first rows of the object
 #names(dt)[1] <- "gene_name"
 ```
 
+```{r}
+# mouse_pkd_sc_sct <- readRDS(here("Datasets", "GSE268494_PKDaggr_GEO_count_SCT.rds"))
+# 
+# mouse_pkd_sc <- readRDS(here("Datasets", "GSE268494_PKDaggr_GEO_count_RNA.rds"))
+# head(mouse_pkd_sc)
+```
 
 
 
@@ -620,13 +626,13 @@ up_genes <- sum(deg_day12$P.Value < p_cutoff & deg_day12$logFC > fc_cutoff)
 down_genes <- sum(deg_day12$P.Value < p_cutoff & deg_day12$logFC < -fc_cutoff)
 not_sig <- sum(!(deg_day12$P.Value < p_cutoff & abs(deg_day12$logFC) > fc_cutoff))
 
-cat("Upregulated genes:", up_genes, "\n")
-cat("Downregulated genes:", down_genes, "\n")
+cat("More Abundant", up_genes, "\n")
+cat("Less Abundant genes:", down_genes, "\n")
 cat("Not significant:", not_sig, "\n")
 
 
-names(keyvals)[keyvals == "red"] <- paste0("Up Regulated (", up_genes, "genes )")
-names(keyvals)[keyvals == "blue"] <- paste0("Down Regulated (", down_genes, "genes )")
+names(keyvals)[keyvals == "red"] <- paste0("More Abundant (", up_genes, "genes )")
+names(keyvals)[keyvals == "blue"] <- paste0("Less Abundant (", down_genes, "genes )")
 names(keyvals)[keyvals == "grey70"] <- paste0("Not Significant (", not_sig, "genes )")
 
 p <- EnhancedVolcano(
@@ -649,7 +655,7 @@ p <- EnhancedVolcano(
   legendPosition = "right",
   legendLabSize = 11,
   legendIconSize = 3,
-  legendLabels = c( "" , "Up Regulated", "Down Regulated")
+  legendLabels = c( "" , "More Abundant", "Less Abundant")
 )
 d12_Volcano <- p + theme(
   text = element_text(family = "Helvetica Neue Light"),
@@ -684,12 +690,12 @@ up_genes <- sum(deg_day16$P.Value < p_cutoff & deg_day16$logFC > fc_cutoff)
 down_genes <- sum(deg_day16$P.Value < p_cutoff & deg_day16$logFC < -fc_cutoff)
 not_sig <- sum(!(deg_day16$P.Value < p_cutoff & abs(deg_day16$logFC) > fc_cutoff))
 
-cat("Upregulated genes:", up_genes, "\n")
-cat("Downregulated genes:", down_genes, "\n")
+cat("More Abundant genes:", up_genes, "\n")
+cat("Less Abundant genes:", down_genes, "\n")
 cat("Not significant:", not_sig, "\n")
 
-names(keyvals)[keyvals == "red"] <- paste0("Up Regulated (", up_genes,"genes )")
-names(keyvals)[keyvals == "blue"] <- paste0("Down Regulated (", down_genes, "genes )")
+names(keyvals)[keyvals == "red"] <- paste0("More Abundant (", up_genes,"genes )")
+names(keyvals)[keyvals == "blue"] <- paste0("Less Abundant (", down_genes, "genes )")
 names(keyvals)[keyvals == "grey70"] <- paste0("Not Significant (", not_sig, "genes )")
 
 library(EnhancedVolcano)
@@ -714,7 +720,7 @@ p <- EnhancedVolcano(
   legendPosition = "right",
   legendLabSize = 11,
   legendIconSize = 3,
-  legendLabels = c( "" , "Down Regulated", "Up Regulated")
+  legendLabels = c( "" , "Less Abundant", "More Abundant")
 )
 d16_Volcano <- p + theme(
   text = element_text(family = "Helvetica Neue Light"),
