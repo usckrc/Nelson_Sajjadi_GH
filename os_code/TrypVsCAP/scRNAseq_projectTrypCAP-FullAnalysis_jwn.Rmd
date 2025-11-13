@@ -1,0 +1,2966 @@
+---
+title: "CAP & Tryp Analysis"
+subtitle: "Comparing Single Cell to Single Nucleus" 
+author: "Omid Sajjadi"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    toc: yes
+    toc_depth: 2
+    toc_float: true
+    number_sections: no
+    theme: bootstrapdata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAAbElEQVR4Xs2RQQrAMAgEfZgf7W9LAguybljJpR3wEse5JOL3ZObDb4x1loDhHbBOFU6i2Ddnw2KNiXcdAXygJlwE8OFVBHDgKrLgSInN4WMe9iXiqIVsTMjH7z/GhNTEibOxQswcYIWYOR/zAjBJfiXh3jZ6AAAAAElFTkSuQmCC
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# **Deliverables**
+- Compare TRYP (single-cell) vs CAP (single-nucleus) datasets:
+  - How many cells/nuclei were captured in each?
+  - What's the difference in gene/cell depth and coverage?
+- Integrate the two datasets (TRYP + CAP) to see:
+    - Whether integration improves resolution of cell types.
+    - Whether it helps rescue cell types missing from one dataset.
+    - If batch effects are present and how well they can be corrected.
+    - Visualize cell type composition and marker gene expression in both pre- and post-integration.
+- Assess which prep method gives a more complete or higher-quality view of the kidney organoid.
+
+
+# **Dataset Information**
+- The **TRYP dataset** was generated using the single-cell RNA-sequencing (scRNA-seq) technique. In this method, whole cells were dissociated from the kidney organoid sample using TrypLE enzymatic digestion, allowing capture of cytoplasmic mRNA. This method generally gives higher RNA content per cell but may lose fragile or hard-to-dissociate cell types (like podocytes or interstitial cells).
+    - The wet lab for TRYP was performed by Pedro.
+    - Expect more genes per cell but potentially biased capture toward easier-to-dissociate populations.
+
+- The **CAP dataset** was generated using single-nucleus RNA-sequencing (snRNA-seq). Instead of dissociating whole cells, this method isolates intact nuclei from organoid samples, which allows retention of difficult-to-dissociate or fragile cell types. It’s also better for frozen tissue or samples with poor viability.
+    - The wet lab for CAP was performed by Carrie.
+    - Expect fewer genes per nucleus (because only nuclear RNA is captured), but potentially broader representation of cell types.
+
+
+# **Conclusion**
+
+
+
+# **Future Work**
+
+
+```{r create folders, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+if (!require("here")) {install.packages("here"); require("here")}
+
+Datasets <- "Datasets"
+Outputs <- "Outputs"
+
+if (!dir.exists(here(Datasets))) {dir.create(here(Datasets))}
+if (!dir.exists(here(Outputs))) {dir.create(here(Outputs))}
+
+```
+
+
+```{r install packages, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+
+#install.packages("remotes")
+#remotes::install_github('chris-mcginnis-ucsf/DoubletFinder', force = TRUE)
+
+#install.packages("devtools")
+#devtools::install_github("davidsjoberg/ggsankey")
+
+```
+
+
+```{r load packages, error=FALSE, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("Seurat")) {install.packages("Seurat"); require("Seurat")}
+if (!require("patchwork")) {install.packages("patchwork"); require("patchwork")}
+if (!require("cowplot")) {install.packages("cowplot"); require("cowplot")}
+if (!require("ggpubr")) {install.packages("ggpubr"); require("ggpubr")}
+if (!require("plotly")) {install.packages("plotly"); require("plotly")}
+if (!require("knitr")) {install.packages("knitr"); require("knitr")}
+if (!require("htmlwidgets")) {install.packages("htmlwidgets"); require("htmlwidgets")}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")} # for titying up data
+if (!require("RColorBrewer")) {install.packages("RColorBrewer"); require("RColorBrewer")} # for color brewer
+if (!require("sctransform")) {install.packages("sctransform"); require("sctransform")} # for data normalization
+if (!require("openxlsx")) {install.packages("openxlsx"); require("openxlsx")} # to save .xlsx files
+if (!require("SoupX")) {install.packages("SoupX"); require("SoupX")}
+if (!require("readxl")) {install.packages("readxl"); require("readxl")}
+if (!require("hdf5r")) {install.packages("hdf5r"); require("hdf5r")}
+if (!require("qs")) {install.packages("qs"); require("qs")}
+if (!require("glmGamPoi")) {BiocManager::install('glmGamPoi'); require("glmGamPoi")} # for data normalization, sctransform
+if (!require("EnhancedVolcano")) {BiocManager::install('EnhancedVolcano'); require("EnhancedVolcano")} # volcano plot
+if (!require("extrafont")) {BiocManager::install('extrafont'); require("extrafont")} # volcano plot
+if (!require("gt")) {BiocManager::install('gt'); require("gt")} # volcano plot
+
+library(ggsankey)
+library(DoubletFinder)
+
+set.seed(12345)
+here()
+```
+
+# **Analysis of CAP and TRYP **
+
+## Tryp Data
+
+
+```{r sample name, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+sample_name <- "Tryp" # Replace with your sample name
+
+```
+
+```{r load data and filter, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Create a Soup Channel Object(sc) to use for future filtering of ambient RNA 
+RawDataset = Read10X_h5(here("Datasets", "Tryp_raw_feature_bc_matrix.h5"))
+FilteredDataset = Read10X_h5(here("Datasets", "Tryp_filtered_feature_bc_matrix.h5"))
+
+# Make a Seurat Object from the filtered control data 
+filtered_kidney <- Read10X_h5(here("Datasets", "Tryp_filtered_feature_bc_matrix.h5"))
+filtered_kidney <- CreateSeuratObject(counts = filtered_kidney, project = "Filteredkidney_snRNA")
+
+```
+
+### 01 SoupX
+
+```{r soupX, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+
+sc = SoupChannel(RawDataset,FilteredDataset)
+
+# Cluster the Cells with Seurat 
+filtered_kidney <- SCTransform(filtered_kidney, verbose = F)
+filtered_kidney <- RunPCA(filtered_kidney, verbose = F)
+filtered_kidney <- RunUMAP(filtered_kidney, dims = 1:40, verbose = F)
+filtered_kidney <- FindNeighbors(filtered_kidney, dims = 1:40, verbose = F)
+filtered_kidney <- FindClusters(filtered_kidney, verbose = F)
+
+meta <- filtered_kidney@meta.data
+umap <- filtered_kidney@reductions$umap@cell.embeddings
+clusters <- setNames(meta$seurat_clusters, rownames(meta))
+
+#Ensure the two following numbers are equal before continuing 
+check1 <- length(clusters)
+check2 <- nrow(sc$metaData)
+
+sc <- setClusters(sc, clusters)
+sc <- setDR(sc, umap)
+
+```
+
+Estimation of **`r sample_name`** Ambient RNA levels
+
+```{r soupx estimate, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+sc = autoEstCont(sc)
+
+x <- sc$fit$rhoEst * 100
+y <- sc$fit$rhoFWHM * 100
+#in bad datasets the peak is 
+```
+
+-This post rho value is **`r x`%** with a FWHM of **`r y[1]`% - `r y[2]`% **. This means that your estimated amount of ambient RNA is **`r x`%**.
+- **WARNING:** Ambient RNA
+
+`r if (x > 5) {"<span style='color:red;font-weight:bold;'>Warning: Ambient RNA is greater than 5%!</span>"} else {"Ambient RNA levels are acceptable."}`
+
+```{r clean data and make new object, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+#Clean the data
+filtered_kidney_out = adjustCounts(sc)
+ 
+#Create a new Seurat Object out of the cleaned data
+seurat.obj <- CreateSeuratObject(filtered_kidney_out)
+
+# Remove unused objects in environment to save RAM
+
+
+rm(filtered_kidney, filtered_kidney_out, FilteredDataset, RawDataset, sc, meta, check1, check2, clusters, umap, y, Datasets, Outputs)
+```
+
+### 02 Filtering of Low Complexity Cells
+
+This step serves to filter out droplets that may have **inadvertently** been determined as cells by CellRanger (or other demultiplexing applications). Not filtering out the empty droplets will interfere with doublet detection downstream. 
+
+```{r minimal filtering of low quality cells, echo=TRUE, error=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE, results='hide'}
+
+Start <- ncol(seurat.obj)
+
+p1 <- VlnPlot(seurat.obj, features = c("nFeature_RNA")) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+p2 <- VlnPlot(seurat.obj, features = c("nFeature_RNA"), pt.size = 0) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+p3 <- VlnPlot(seurat.obj, features = c("nCount_RNA")) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+p4 <- VlnPlot(seurat.obj, features = c("nCount_RNA"), pt.size = 0) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+cowplot::plot_grid(p1, p2, p3, p4, ncol = 4, scale = .85) + draw_label("Before Filtering", y = .95, size = 22, fontface = "bold")
+
+# Minimal filtering of low quality cells 
+seurat.obj.f <- subset(seurat.obj, nFeature_RNA > 2100 & nFeature_RNA < 7500 & nCount_RNA   > 4500 & nCount_RNA   < 50000)
+
+p1 <- VlnPlot(seurat.obj.f, features = c("nFeature_RNA")) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+p2 <- VlnPlot(seurat.obj.f, features = c("nFeature_RNA"), pt.size = 0) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+p3 <- VlnPlot(seurat.obj.f, features = c("nCount_RNA")) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+p4 <- VlnPlot(seurat.obj.f, features = c("nCount_RNA"), pt.size = 0) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+cowplot::plot_grid(p1, p2, p3, p4, ncol = 4, scale = .85) + draw_label("After Filtering Low Complexity Cells", y = .95, size = 22, fontface = "bold")
+
+Filter_1 <- ncol(seurat.obj.f)
+
+amountfiltered1 <- Start-Filter_1
+
+#Making a table to display the amount of cells being filtered out with the minimal filtering of low quality cells applied to the snRNAseq dataset. 
+cell_counts <- data.frame(Phase = c("Before Filtering", "After Filtering", "Amount Filtered"), Cell_Number = c(Start, Filter_1, amountfiltered1))
+
+print(cell_counts)
+
+# Remove unused objects in environment to save RAM
+
+rm(seurat.obj, p1, p2, p3, p4, cell_counts)
+
+```
+
+**`r amountfiltered1` cells** were removed after **filtering low-complexity cells**. 
+Filtering parameters used: nFeature_RNA > 2100 & nFeature_RNA < 7500 & nCount_RNA   > 4500 & nCount_RNA   < 50000
+
+### 03 High-Dimentional Superclustering
+
+```{r set resolution, echo=TRUE, error=FALSE, message=FALSE, warning=FALSE}
+
+resolution_value <- 2.0 # Set the resolution value for clustering
+
+```
+
+```{r initial clustering, echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+
+# Pre-process standard workflow
+seurat.obj.f <- NormalizeData(object = seurat.obj.f)
+seurat.obj.f <- FindVariableFeatures(object = seurat.obj.f)
+seurat.obj.f <- ScaleData(object = seurat.obj.f)
+seurat.obj.f <- RunPCA(object = seurat.obj.f)
+rm(p1,p2)
+p1 <- ElbowPlot(seurat.obj.f, ndims = 60)
+
+seurat.obj.f <- FindNeighbors(object = seurat.obj.f, dims = 1:50)
+seurat.obj.f <- FindClusters(object = seurat.obj.f, resolution = resolution_value, verbose = F)
+
+# Make a UMAP to visualize the clusters 
+seurat.obj.f <- RunUMAP(object = seurat.obj.f, dims = 1:50)
+p2 <- DimPlot(seurat.obj.f, reduction = "umap", label = TRUE) +
+   theme(plot.title = element_text(hjust = 0.5)) +
+   ggtitle(paste0("Initial Clustering for ", sample_name)) +
+    NoLegend()           
+  
+p2 
+
+rm(p1,p2)
+```
+
+
+
+
+```{r cluster DEG list, eval=FALSE, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+## Save Excel Spreadsheet 
+
+# This code creates an Excel Spreadsheet of DEG List by Cluster
+
+# This file can be used to determine the **prominent features** (highly enriched genes) of each cluster. 
+# 
+# The file will be located in the **Outputs** folder. 
+
+
+all_markers <- FindAllMarkers(seurat.obj.f, only.pos = TRUE, min.pct = 0.5, logfc.threshold = 1)
+
+# Order by avg_log2FC
+all_markers <- all_markers %>%
+  arrange(desc(avg_log2FC)) %>%
+  select(gene, everything())
+
+# Split by cluster (ident column)
+marker_list <- split(all_markers, all_markers$cluster)
+
+# Sort names alphanumerically
+sorted_cluster_names <- names(marker_list)[order(as.numeric(names(marker_list)))]
+
+# Create a workbook
+wb <- createWorkbook()
+
+# Add each cluster as a new worksheet
+for (cluster_name in sorted_cluster_names) {
+  addWorksheet(wb, sheetName = cluster_name)
+  writeData(wb, sheet = cluster_name, marker_list[[cluster_name]])
+}
+
+date <- format(Sys.Date(), "%Y%m%d")
+
+# Save workbook
+saveWorkbook(wb, here("Outputs", paste0(date, "_", sample_name, "_FindAllMarkers_By_Cluster.xlsx")), overwrite = TRUE)
+
+```
+
+
+
+```{r first mdd, echo=TRUE, error=FALSE, fig.height=11, fig.width=20, message=FALSE, warning=FALSE}
+# Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
+markers.to.plot1 <- c("EYA1",    # NPC
+                      "SIX2",    # NPC
+                      "CITED1",  # NPC
+                      
+                      "NPHS1",   # PODO
+                      "NPHS2",   # PODO
+                      "PODXL",   # PODO
+                      "CLIC5",   # PODO
+                      "MAFBF",   # PODO
+                      "PTPRO",   # PODO
+                      
+                      "CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                      "SLC22A6", # PT
+                      "SLC22A8", # PT
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                      "SLC5A1",  # PT
+                      "SLC5A2",  # PT
+                      "ABCC2",   # PT
+                      "ABCG2",   # PT
+                      "SLC47A1", # PT
+                      "SLC23A1", # PT
+                      "SLC38A3", # PT
+                      "SLC13A2", # PT
+
+                      "CALB1",   # CNT
+                      "S100G",   # CNT
+                      "TRPV5",   # CNT
+                      "KCNE1",   # CNT
+                      "SLC2A9",  # CNT
+                      "EMX1",    # CNT
+                      "VDR",     # CNT
+            
+                      "TMEM52B", # CNT, DT
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      "RHBG",    # DT
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      "TFCP2L1", # DN, LoH
+                      
+                      "UPK1A",   #DmC
+                  
+                      "UMOD",    # LoH
+                      "AQP1",    # LoH
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                      
+                     
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                      
+                      "FOXI1",     # IC
+                      "ATP6V1B1",  # IC
+                      "ATP6V0D2",  # IC
+                      "ATP6V1C2",  # IC
+                      "ATP6V1G3",  # IC
+                      "CA2",       # IC
+                      "SLC4A1",    # IC
+                      "SLC4A9",    # IC
+                      "SLC26A4",   # IC
+                      "RHCG",      # IC
+                 
+                      "KRT19",   # UE
+                      "FOXQ1",   # UE
+                      
+                      "RET",     # UPC
+                      "WNT11",   # UPC
+                      
+                      "CD34",   # Endo
+                      "CDH5",   # Endo
+                      "MCAM",   # Endo
+                      "KDR",    # Endo
+                      "FLT1",   # Endo
+                      "ESM1",   # Endo
+                      "EGFL7",  # Vasc
+                      "PLVAP",  # Vasc
+                      
+                      "PDGFRA", # Int
+                      "PDGFRB", # Int
+                      "DCN",    # Int
+                      "POSTN",  # Int
+                      "MEIS1",  # Int
+                      "MEIS2",  # Int
+                      "MEIS3",  # Int
+                      
+                      "IKZF1",  # Imm
+                      "CD36",   # Imm
+                     
+                      "MAP6",   # NEURO
+                      "SOX2",   # NEURO
+                      
+                      "REN"     #Renin
+                      
+                      
+                      
+                      
+)
+
+markers.to.plot4 <- c("EYA1",    # NPC
+                      "SIX2",    # NPC
+                      "CITED1",  # NPC
+                      
+                      "NPHS1",   # PODO
+                      "NPHS2",   # PODO
+                      "PODXL",   # PODO
+                      "CLIC5",   # PODO
+                      "MAFBF",   # PODO
+                      "PTPRO",   # PODO
+                      
+                      "CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                      "SLC22A6", # PT
+                      "SLC22A8", # PT
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                      "SLC5A1",  # PT
+                      "SLC5A2",  # PT
+                      "ABCC2",   # PT
+                      "ABCG2",   # PT
+                      "SLC47A1", # PT
+                     
+            
+                      "TMEM52B", # CNT, DT
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      "RHBG",    # DT
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      
+                      "CA2",       # IC
+                     
+                      
+                      "RET",     # UPC
+                      "WNT11",   # UPC
+               
+                      
+                      "PDGFRA", # Int
+                      "PDGFRB", # Int
+                      "DCN",    # Int
+                      "POSTN",  # Int
+                      "MEIS1",  # Int
+                      "MEIS2",  # Int
+                      "MEIS3" # Int
+                      
+                      
+                      
+                      
+                      
+)
+
+
+p1 <- DotPlot(seurat.obj.f,
+features = markers.to.plot4,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+
+p1
+
+```
+
+
+
+```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+### 04 Manual Doblet Removal - Skipped in revision 
+seurat.obj.f_singlets <- seurat.obj.f
+Filter_2  <- ncol(seurat.obj.f_singlets)
+
+amountfiltered2 <- Filter_1-Filter_2
+
+#Making a table to display the amount of cells being filtered out with the minimal filtering of low quality cells applied to the snRNAseq dataset. 
+cell_counts <- data.frame(Phase = c("Before Filtering", "After Filtering", "Amount Filtered"), Cell_Number = c(Filter_1, Filter_2, amountfiltered2))
+
+print(cell_counts)
+
+# Remove unused objects in environment to save RAM
+# rm(seurat.obj.f, seurat.obj.f_doublets, sweep.res.list_seurat.obj.f, sweep.stats_seurat.obj.f, p, p1, p2)
+
+```
+
+
+
+
+```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# # Apply the name "SINGLET" or "DOUBLET" to a cluster based on the multidimensional dot plot
+# 
+# doublet_clusters <- c()
+# 
+# # Annotate metadata
+# seurat.obj.f_singlets@meta.data <- seurat.obj.f_singlets@meta.data %>%
+#   mutate(subclass.doublet = if_else(
+#     seurat_clusters %in% doublet_clusters, "DOUBLET", "SINGLET"
+#   ))
+# 
+# # Change the identities to align with new subclass names and make umap
+# Idents(seurat.obj.f_singlets) <- seurat.obj.f_singlets@meta.data$subclass.doublet
+# 
+# f1 <- DimPlot(seurat.obj.f_singlets, reduction = "umap") +
+#   theme(plot.title = element_text(hjust = 0.5)) +
+#   ggtitle("Before Manual Doublet Filtering")
+
+```
+
+```{r  echo=FALSE, error=FALSE, fig.height=4, fig.width=16, message=FALSE, warning=FALSE, results='hide'}
+# # Double check the table to ensure SINGLET & DOUBLET cluster appear with this function
+# table(Idents(seurat.obj.f_singlets))
+# 
+# # Clean out the doublets manually that were identified 
+# seurat.obj.f_cleaned <- subset(seurat.obj.f_singlets, idents = "DOUBLET", invert = TRUE)
+# 
+# # Double check that the identity was removed 
+# table(Idents(seurat.obj.f_cleaned))
+# 
+# # Make umap to double check removal 
+# f2 <- DimPlot(seurat.obj.f_cleaned, reduction = "umap") +
+#   theme(plot.title = element_text(hjust = 0.5)) +
+#   ggtitle("After Manual Doublet Filtering")
+# 
+# f1+f2
+# 
+# # Remove unused objects in environment to save RAM
+# rm(seurat.obj.f_singlets, seurat.obj.f)
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+seurat.obj.f_cleaned <- seurat.obj.f
+# seurat.obj.f_cleaned_new <- SCTransform(seurat.obj.f_cleaned) %>%
+#     RunPCA() %>%
+#     FindNeighbors(dims = 1:40) %>%
+#     FindClusters(resolution = 2, verbose = FALSE) %>%
+#     RunUMAP(dims = 1:40)
+# 
+# DimPlot(seurat.obj.f_cleaned_new, reduction = "umap", label = TRUE) +  
+#   theme(plot.title = element_text(hjust = 0.5)) +
+#   ggtitle(paste0("Non-annotated Clusters for ", sample_name))
+# 
+# DefaultAssay(seurat.obj.f_cleaned_new) <- "RNA"
+# 
+# seurat.obj.f_cleaned <- seurat.obj.f_cleaned_new
+```
+
+
+```{r error=FALSE, fig.width=14, message=FALSE, warning=FALSE, , fig.height=11, include=FALSE}
+# Make mdd for all removed doublets 
+
+DotPlot(seurat.obj.f_cleaned,
+features = markers.to.plot4,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+```
+
+
+### 04 Annotation by Subclass
+
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+# Apply names to the clusters by subclass
+seurat.obj.f_cleaned@meta.data <- seurat.obj.f_cleaned@meta.data %>% mutate(subclass = dplyr::case_when(
+seurat_clusters == 0 ~ "INT",
+seurat_clusters == 1 ~ "INT",
+seurat_clusters == 2 ~ "INT",
+seurat_clusters == 3 ~ "INT",
+seurat_clusters == 4 ~ "INT",
+seurat_clusters == 5 ~ "PODO", 
+seurat_clusters == 6 ~ "PODO",
+seurat_clusters == 7 ~ "INT",
+seurat_clusters == 8 ~ "INT",
+seurat_clusters == 9 ~ "INT",
+seurat_clusters == 10 ~ "INT",
+seurat_clusters == 11 ~ "PODO",
+seurat_clusters == 12 ~ "INT",
+seurat_clusters == 13 ~ "TUBULES",
+seurat_clusters == 14 ~ "PODO",
+seurat_clusters == 15 ~ "INT",
+seurat_clusters == 16 ~ "INT",
+seurat_clusters == 17 ~ "INT",
+seurat_clusters == 18 ~ "TUBULES",
+seurat_clusters == 19 ~ "INT",
+seurat_clusters == 20 ~ "INT",
+seurat_clusters == 21 ~ "INT",
+seurat_clusters == 22 ~ "TUBULES",
+seurat_clusters == 23 ~ "INT"
+))
+
+
+
+# Filter out the doublets
+
+seurat.obj.f_cleaned <- subset(seurat.obj.f_cleaned, subset = subclass == "DOUBLET", invert = TRUE)
+
+subclass_order <- c("TUBULES", "PODO", "INT" )
+
+seurat.obj.f_cleaned@meta.data$subclass <- factor(seurat.obj.f_cleaned@meta.data$subclass, levels = subclass_order)
+
+# Change the identities to align with new subclass names and make umap
+Idents(seurat.obj.f_cleaned) <- seurat.obj.f_cleaned@meta.data$subclass
+
+DimPlot(seurat.obj.f_cleaned, reduction = "umap", label = TRUE, label.size = 4) +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Subclass Annotation for ", sample_name))
+
+#FeaturePlot(seurat.obj.f_cleaned, features = c("nCount_RNA", "nFeature_RNA" ))
+
+```
+
+
+```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+
+Filter_3  <- ncol(seurat.obj.f_cleaned)
+
+amountfiltered3 <- Filter_2-Filter_3
+
+#Making a table to display the amount of cells being filtered out with the minimal filtering of low quality cells applied to the snRNAseq dataset. 
+cell_counts <- data.frame(Phase = c("Before Filtering", "After Filtering", "Amount Filtered"), Cell_Number = c(Filter_2, Filter_3, amountfiltered3))
+
+print(cell_counts)
+
+```
+
+
+```{r  eval=FALSE, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+## Save Excel Spreadsheet 
+
+### This code creates an Excel Spreadsheet of DEG List by Subtype
+
+#The file will be located in the **Outputs** folder. 
+
+
+
+# Step 1: Find markers (grouped by subclass)
+all_markers <- FindAllMarkers(
+  seurat.obj.f_cleaned,
+  only.pos = TRUE,
+  min.pct = 0.5,
+  logfc.threshold = 1,
+  group.by = "subclass"  # grouping by subclass instead of cluster ID
+)
+
+# Step 2: Sort markers by descending log2FC, put gene column first
+all_markers <- all_markers %>%
+  arrange(desc(avg_log2FC)) %>%
+  select(gene, everything())
+
+# Step 3: Split markers by subclass (stored in 'cluster' column still)
+marker_list <- split(all_markers, all_markers$cluster)
+
+# Step 4: Reorder the list according to your subclass_order
+# First ensure you're only including subclasses that are actually present
+valid_subclasses <- subclass_order[subclass_order %in% names(marker_list)]
+
+# Reorder marker_list based on that
+marker_list <- marker_list[valid_subclasses]
+
+# Step 5: Write to Excel
+wb <- createWorkbook()
+
+for (subclass in names(marker_list)) {
+  addWorksheet(wb, sheetName = subclass)
+  writeData(wb, sheet = subclass, marker_list[[subclass]])
+}
+
+# Step 6: Save file
+date <- format(Sys.Date(), "%Y%m%d")
+saveWorkbook(
+  wb,
+  here("Outputs", paste0(date, "_", sample_name, "_FindAllMarkers_By_Subclass.xlsx")),
+  overwrite = TRUE
+)
+```
+
+
+### 05 Annotation by Type
+
+```{r  echo=FALSE, error=FALSE, message=FALSE, warning=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center', fig.align='center'}
+# Change the order of the identities on the x-axis to create a diagonal on the dotplot, going from top to bottom of the "naming kidney cells" table
+
+markers.to.plot2 <- c("NPHS1",   # PODO
+                      "NPHS2",   # PODO
+                      "PTPRO",   # PODO
+                      
+                      "CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                      "SLC22A6", # PT
+                      "SLC22A8", # PT
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                      "SLC5A1",  # PT
+                      "SLC5A2",  # PT
+                      "ABCC2",   # PT
+                      "ABCG2",   # PT
+                      "SLC47A1", # PT
+                      "SLC23A1", # PT
+              
+                      "POU3F3",  # DN
+                      "TFCP2L1", # DN, LoH
+                      
+                      "UPK1A",   #DmC
+                  
+                    
+                      "CA2",       # IC
+                      
+                 
+                      "KRT19",   # UE
+                      "FOXQ1",   # UE
+                      
+                     
+                      
+                      
+                      "PDGFRA", # Int
+                      "PDGFRB", # Int
+                      "DCN",    # Int
+                      "POSTN",  # Int
+                      "MEIS1",  # Int
+                      "MEIS2",  # Int
+                      "MEIS3" # Int
+                      
+                
+                      
+                      
+                      
+                      
+)
+
+subclass_order <- c("PODO", "TUBULES", "INT")
+seurat.obj.f_cleaned$subclass <- factor(seurat.obj.f_cleaned$subclass, levels = subclass_order)
+DotPlot(seurat.obj.f_cleaned,
+features = markers.to.plot2,
+group.by = "subclass",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters") +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Subclass Annotation for ", sample_name))
+```
+
+
+### 06 Cell Proportions
+```{r include=FALSE}
+nrow(seurat.obj.f_cleaned@meta.data)
+sum(table(seurat.obj.f_cleaned$subclass))
+#^^^ Sanity check: The two number above have to match 
+
+table(seurat.obj.f_cleaned$subclass)
+
+seurat.obj.f_cleaned@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2))
+
+
+```
+
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+library(gt)
+
+# Create summary table
+subclass_summary <- seurat.obj.f_cleaned@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2)) %>%
+  arrange(desc(percent))
+
+# Add total row
+subclass_summary_with_total <- subclass_summary %>%
+  bind_rows(
+    tibble(subclass = "Total",
+           cell_count = sum(subclass_summary$cell_count),
+           percent = sum(subclass_summary$percent))
+  )
+
+
+subclass_summary_with_total %>%
+  gt() %>%
+  tab_header(
+    title = md("**📊 Cell Count and Percentage by Subclass**"),
+    subtitle = md("From `seurat.obj.f_cleaned` metadata")
+  ) %>%
+  fmt_number(columns = percent, decimals = 2) %>%
+  tab_options(
+    table.border.top.color = "black",
+    table.border.bottom.color = "black",
+    table.border.top.width = px(2),
+    table.border.bottom.width = px(2),
+    data_row.padding = px(4),
+    table.font.size = 13
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(rows = subclass == "Total")
+  )
+```
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+library(ggplot2)
+library(dplyr)
+library(extrafont)  # optional, for better font control on some systems
+
+# Make sure you have the font installed on your Mac:
+# (You can check in Font Book — most Macs already have Helvetica Neue Light)
+
+# Create subclass summary (if not done yet)
+subclass_summary <- seurat.obj.f_cleaned@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2))
+
+# Plot with Helvetica Neue Light
+ggplot(subclass_summary, aes(x = "", y = percent, fill = subclass)) +
+  geom_bar(stat = "identity", width = 0.6, color = "white", linewidth = 0.5) +
+  geom_text(aes(label = paste0(percent, "%")),
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 4, family = "Helvetica Neue Light") +
+  scale_fill_brewer(palette = "Pastel2") +
+  theme_void(base_family = "Helvetica Neue Light") +
+  theme(
+    legend.title = element_blank(),
+    legend.text = element_text(size = 11, family = "Helvetica Neue Light"),
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, size = 16, face = "plain", family = "Helvetica Neue Light")
+  ) +
+  labs(title = "Tryp Cell Type Proportions")
+```
+
+
+
+
+```{r include=FALSE}
+##FREE MEMORY
+qsave(seurat.obj.f_cleaned, here("Outputs","TrypAnnotated.qs"))
+
+rm(filtered_kidney, filtered_kidney_out, FilteredDataset, RawDataset,
+   sc, meta, check1, check2, clusters, umap, y, seurat.obj,
+   seurat.obj.f, seurat.obj.f_singlets, amountfiltered1, amountfiltered2, amountfiltered3,
+   Filter_1, Filter_2, Filter_3, cell_counts, subclass_summary, subclass_summary_with_total)
+
+gc()
+```
+
+
+
+### 07 Tubules Subsetting
+```{r include=FALSE}
+seurat.obj.f_cleaned <- qread(here("Outputs","TrypAnnotated.qs"))
+# here Iam subsettign my tubules
+head(seurat.obj.f_cleaned)
+
+colnames(seurat.obj.f_cleaned@meta.data)[ colnames(seurat.obj.f_cleaned@meta.data) == "subclass"] <- "celltype"
+
+seurat.tubules <- subset(seurat.obj.f_cleaned, subset = celltype == "TUBULES")
+
+head(seurat.tubules)
+
+seurat.tubules
+```
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+seurat.tubules.transformed<- SCTransform(seurat.tubules) %>%
+    RunPCA() %>%
+    FindNeighbors(dims = 1:10) %>%
+    FindClusters(resolution = 0.2, verbose = FALSE) %>%
+    RunUMAP(dims = 1:10)
+
+DimPlot(seurat.tubules.transformed, reduction = "umap", label = TRUE) +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Non-annotated Clusters for Subcluster TUBULES"))
+
+DefaultAssay(seurat.tubules.transformed) <- "RNA"
+```
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+markers.to.plot2 <- c("CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                      "SLC22A6", # PT
+                      "SLC22A8", # PT
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                      "SLC5A1",  # PT
+                      "SLC5A2",  # PT
+                      "ABCC2",   # PT
+                      "ABCG2",   # PT
+                      "SLC47A1", # PT
+                      "SLC23A1", # PT
+                      "SLC38A3", # PT
+                      "SLC13A2", # PT
+
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      "RHBG",    # DT
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      "TFCP2L1", # DN, LoH
+                      
+                      "UPK1A",   #DmC
+                  
+                      "UMOD",    # LoH
+                      "AQP1",    # LoH
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                      "CA2",       # IC
+                 
+                      "KRT19",   # UE
+                      "FOXQ1"    # UE
+                    
+                      
+                      
+)
+
+
+DotPlot(seurat.tubules.transformed,
+features = markers.to.plot2,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+```
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+seurat.tubules.transformed@meta.data <- seurat.tubules.transformed@meta.data %>% mutate(subclass = dplyr::case_when(
+seurat_clusters == 0 ~ "Unknown1",
+seurat_clusters == 1 ~ "PT-DT",
+seurat_clusters == 2 ~ "PEC",
+seurat_clusters == 3 ~ "Unknown2"
+
+
+))
+
+# Filter out the doublets
+
+subclass_order <- c("PEC","PT-DT", "Unknown1", "Unknown2" )
+
+seurat.tubules.transformed@meta.data$subclass <- factor(seurat.tubules.transformed@meta.data$subclass, levels = subclass_order)
+
+# Change the identities to align with new subclass names and make umap
+Idents(seurat.tubules.transformed) <- seurat.tubules.transformed@meta.data$subclass
+
+DimPlot(seurat.tubules.transformed, reduction = "umap", label = TRUE, label.size = 4) +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Subclass Annotation for TUBULES"))
+
+FeaturePlot(seurat.tubules.transformed, features = c("nCount_RNA", "nFeature_RNA" ))
+```
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+DotPlot(seurat.tubules.transformed,
+features = markers.to.plot2,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+```
+
+
+
+
+```{r include=FALSE}
+nrow(seurat.tubules.transformed@meta.data)
+sum(table(seurat.tubules.transformed$subclass))
+#^^^ Sanity check: The two number above have to match 
+
+table(seurat.tubules.transformed$subclass)
+
+seurat.tubules.transformed@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2))
+
+
+```
+
+
+
+```{r echo=TRUE}
+library(gt)
+# Create summary table
+subclass_summary <- seurat.tubules.transformed@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2)) %>%
+  arrange(desc(percent))
+
+# Add total row
+subclass_summary_with_total <- subclass_summary %>%
+  bind_rows(
+    tibble(subclass = "Total",
+           cell_count = sum(subclass_summary$cell_count),
+           percent = sum(subclass_summary$percent))
+  )
+
+subclass_summary_with_total %>%
+  gt() %>%
+  tab_header(
+    title = md("**📊 Cell Count and Percentage by Subclass**"),
+    subtitle = md("From `seurat.tubules.transformed` metadata")
+  ) %>%
+  fmt_number(columns = percent, decimals = 2) %>%
+  tab_options(
+    table.border.top.color = "black",
+    table.border.bottom.color = "black",
+    table.border.top.width = px(2),
+    table.border.bottom.width = px(2),
+    data_row.padding = px(4),
+    table.font.size = 13
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(rows = subclass == "Total")
+  )
+```
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+library(ggplot2)
+library(dplyr)
+library(extrafont)  # optional, for better font control on some systems
+
+# Make sure you have the font installed on your Mac:
+# (You can check in Font Book — most Macs already have Helvetica Neue Light)
+
+# Create subclass summary (if not done yet)
+subclass_summary <- seurat.tubules.transformed@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2))
+
+# Plot with Helvetica Neue Light
+ggplot(subclass_summary, aes(x = "", y = percent, fill = subclass)) +
+  geom_bar(stat = "identity", width = 0.6, color = "white", linewidth = 0.5) +
+  geom_text(aes(label = paste0(percent, "%")),
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 4, family = "Helvetica Neue Light") +
+  scale_fill_brewer(palette = "Pastel2") +
+  theme_void(base_family = "Helvetica Neue Light") +
+  theme(
+    legend.title = element_blank(),
+    legend.text = element_text(size = 11, family = "Helvetica Neue Light"),
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, size = 16, face = "plain", family = "Helvetica Neue Light")
+  ) +
+  labs(title = "Tryp Tubules Cell Type Proportions")
+
+#qsave(seurat.tubules.transformed, here("Outputs", "Tryp_Tubules_Annotated.qs"))
+```
+
+
+
+```{r include=FALSE}
+#FREE MEMORY
+rm(seurat.obj.f_cleaned,
+   seurat.tubules,
+   seurat.tubules.transformed,
+   markers.to.plot2,
+   subclass_order,
+   comp, subclass_summary, subclass_summary_with_total, seurat.obj.f_cleaned_new, f1, f2, doublet_clusters, Filter_3, markers.to.plot1, p_comp, p_prop_clean, p1, resolution_value, sample_name, Start, target_ct, x, markers.to.plot4)
+gc()
+```
+
+
+
+## CAP Data
+
+
+```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+sample_name <- "CAP" # Replace with your sample name
+
+```
+
+```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Create a Soup Channel Object(sc) to use for future filtering of ambient RNA
+RawDataset = Read10X_h5(here("Datasets", "CAP_raw_feature_bc_matrix.h5"))
+FilteredDataset = Read10X_h5(here("Datasets", "CAP_filtered_feature_bc_matrix.h5"))
+
+# Make a Seurat Object from the filtered control data
+filtered_kidney <- Read10X_h5(here("Datasets", "CAP_filtered_feature_bc_matrix.h5"))
+filtered_kidney <- CreateSeuratObject(counts = filtered_kidney, project = "Filteredkidney_snRNA")
+
+```
+
+
+
+### 01 SoupX
+
+```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+sc = SoupChannel(RawDataset,FilteredDataset)
+
+# Cluster the Cells with Seurat
+filtered_kidney <- SCTransform(filtered_kidney, verbose = F)
+filtered_kidney <- RunPCA(filtered_kidney, verbose = F)
+filtered_kidney <- RunUMAP(filtered_kidney, dims = 1:40, verbose = F)
+filtered_kidney <- FindNeighbors(filtered_kidney, dims = 1:40, verbose = F)
+filtered_kidney <- FindClusters(filtered_kidney, verbose = F)
+
+meta <- filtered_kidney@meta.data
+umap <- filtered_kidney@reductions$umap@cell.embeddings
+clusters <- setNames(meta$seurat_clusters, rownames(meta))
+
+#Ensure the two following numbers are equal before continuing
+check1 <- length(clusters)
+check2 <- nrow(sc$metaData)
+
+sc <- setClusters(sc, clusters)
+sc <- setDR(sc, umap)
+
+```
+
+Estimation of **`r sample_name`** Ambient RNA levels
+
+```{r echo=TRUE, error=FALSE, message=FALSE, warning=FALSE}
+
+sc = autoEstCont(sc)
+
+x <- sc$fit$rhoEst * 100
+y <- sc$fit$rhoFWHM * 100
+#in bad datasets the peak is
+```
+
+**WARNING:** Ambient RNA
+
+`r {"<span style='color:red;font-weight:bold;'>Warning: Ambient RNA is greater than 5%!</span>"}`
+
+```{r error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+#Clean the data
+filtered_kidney_out = adjustCounts(sc)
+
+#Create a new Seurat Object out of the cleaned data
+seurat.seurat.obj.f_cleaned<- CreateSeuratObject(filtered_kidney_out)
+
+# Remove unused objects in environment to save RAM
+
+
+rm(filtered_kidney, filtered_kidney_out, FilteredDataset, RawDataset, sc, meta, check1, check2, clusters, umap, y, Datasets, Outputs)
+```
+
+
+### 02 Filtering of Low Complexity Cells
+This step serves to filter out droplets that may have **inadvertently** been determined as cells by CellRanger (or other demultiplexing applications).Not filtering out the empty droplets will interfere with doublet detection downstream. 
+
+```{r echo=TRUE, error=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE, results='hide'}
+
+seurat.obj <- seurat.seurat.obj.f_cleaned
+
+rm(seurat.seurat.obj.f_cleaned)
+
+
+Start <- ncol(seurat.obj)
+
+ p1 <- VlnPlot(seurat.obj, features = c("nFeature_RNA")) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+ p2 <- VlnPlot(seurat.obj, features = c("nFeature_RNA"), pt.size = 0) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+ p3 <- VlnPlot(seurat.obj, features = c("nCount_RNA")) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+ p4 <- VlnPlot(seurat.obj, features = c("nCount_RNA"), pt.size = 0) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+ cowplot::plot_grid(p1, p2, p3, p4, ncol = 4, scale = .85) + draw_label("Before Filtering", y = .95, size = 22, fontface = "bold")
+
+# Minimal filtering of low quality cells
+ seurat.obj.f <- subset(seurat.obj, nFeature_RNA > 800 & nFeature_RNA < 3500 & nCount_RNA   > 1000 & nCount_RNA   < 5000)
+# seurat.obj.f <- qread(here("Datasets","CAP_filtered.qs"))
+
+
+
+p1 <- VlnPlot(seurat.obj.f, features = c("nFeature_RNA")) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+p2 <- VlnPlot(seurat.obj.f, features = c("nFeature_RNA"), pt.size = 0) + theme(axis.title.x = element_blank()) + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+p3 <- VlnPlot(seurat.obj.f, features = c("nCount_RNA")) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+p4 <- VlnPlot(seurat.obj.f, features = c("nCount_RNA"), pt.size = 0) + theme(axis.title.x = element_blank())  + theme(legend.position = 'none') + theme(axis.text.x = element_text(angle = 0, hjust = .5))
+
+cowplot::plot_grid(p1, p2, p3, p4, ncol = 4, scale = .85) + draw_label("After Filtering Low Complexity Cells", y = .95, size = 22, fontface = "bold")
+
+# Filter_1 <- ncol(seurat.obj.f)
+# 
+# amountfiltered1 <- Start-Filter_1
+
+#Making a table to display the amount of cells being filtered out with the minimal filtering of low quality cells applied to the snRNAseq dataset. 
+# cell_counts <- data.frame(Phase = c("Before Filtering", "After Filtering", "Amount Filtered"), Cell_Number = c(Start, Filter_1, amountfiltered1))
+# 
+# print(cell_counts)
+
+# Remove unused objects in environment to save RAM
+
+rm(seurat.obj, p1, p2, p3, p4, cell_counts)
+
+```
+
+Filtering parameters used: nFeature_RNA > 800 & nFeature_RNA < 3500 & nCount_RNA   > 1000 & nCount_RNA   < 5000
+
+### 03 High-Dimentional Superclustering
+
+```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+resolution_value <- 2.0 # Set the resolution value for clustering
+
+```
+
+```{r  error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+
+# Pre-process standard workflow
+seurat.obj.f <- NormalizeData(object = seurat.obj.f)
+seurat.obj.f <- FindVariableFeatures(object = seurat.obj.f)
+seurat.obj.f <- ScaleData(object = seurat.obj.f)
+seurat.obj.f <- RunPCA(object = seurat.obj.f)
+rm(p1,p2)
+p1 <- ElbowPlot(seurat.obj.f, ndims = 60)
+
+seurat.obj.f <- FindNeighbors(object = seurat.obj.f, dims = 1:50)
+seurat.obj.f <- FindClusters(object = seurat.obj.f, resolution = resolution_value, verbose = F)
+
+# Make a UMAP to visualize the clusters 
+seurat.obj.f <- RunUMAP(object = seurat.obj.f, dims = 1:50)
+p2 <- DimPlot(seurat.obj.f, reduction = "umap", label = TRUE) +
+   theme(plot.title = element_text(hjust = 0.5)) +
+   ggtitle(paste0("Initial Clustering for ", sample_name)) +
+  NoLegend()
+
+# cowplot::plot_grid(p1, p2, ncol = 2, scale = .85) + draw_label("Elbow Plot + High-Dimentional Superclustering", y = .95, size = 22, fontface = "bold")
+p2
+
+rm(p1,p2)
+
+```
+
+
+```{r  eval=FALSE, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+## Save Excel Spreadsheet 
+
+# This code creates an Excel Spreadsheet of DEG List by Cluster
+
+# This file can be used to determine the **prominent features** (highly enriched genes) of each cluster. 
+# 
+# The file will be located in the **Outputs** folder. 
+
+
+all_markers <- FindAllMarkers(seurat.obj.f, only.pos = TRUE, min.pct = 0.5, logfc.threshold = 1)
+
+# Order by avg_log2FC
+all_markers <- all_markers %>%
+  arrange(desc(avg_log2FC)) %>%
+  select(gene, everything())
+
+# Split by cluster (ident column)
+marker_list <- split(all_markers, all_markers$cluster)
+
+# Sort names alphanumerically
+sorted_cluster_names <- names(marker_list)[order(as.numeric(names(marker_list)))]
+
+# Create a workbook
+wb <- createWorkbook()
+
+# Add each cluster as a new worksheet
+for (cluster_name in sorted_cluster_names) {
+  addWorksheet(wb, sheetName = cluster_name)
+  writeData(wb, sheet = cluster_name, marker_list[[cluster_name]])
+}
+
+date <- format(Sys.Date(), "%Y%m%d")
+
+# Save workbook
+saveWorkbook(wb, here("Outputs", paste0(date, "_", sample_name, "_FindAllMarkers_By_Cluster.xlsx")), overwrite = TRUE)
+
+```
+
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, , fig.width=14, dpi=300}
+
+markers.to.plot1 <- c(
+                      
+                      "NPHS1",   # PODO
+                      "NPHS2",   # PODO
+                      "PODXL",   # PODO
+                      "CLIC5",   # PODO
+                      "MAFBF",   # PODO
+                      "PTPRO",   # PODO
+                      
+                      "CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                      "SLC22A6", # PT
+                      "SLC22A8", # PT
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                     
+                      "EMX1",    # CNT
+                      "VDR",     # CNT
+            
+                      "TMEM52B", # CNT, DT
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      "RHBG",    # DT
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      "TFCP2L1", # DN, LoH
+                      
+                      "UPK1A",   #DmC
+                  
+                      "UMOD",    # LoH
+                      "AQP1",    # LoH
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                      
+                     
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                      
+                      "FOXI1",     # IC
+                     
+                      "CA2",       # IC
+                      
+                      "RHCG",      # IC
+                 
+                      "KRT19",   # UE
+                      "FOXQ1",   # UE
+                      
+                      "RET",     # UPC
+                      "WNT11",   # UPC
+                  
+                      
+                      "PDGFRA", # Int
+                      "PDGFRB", # Int
+                      "DCN",    # Int
+                      "POSTN",  # Int
+                      "MEIS1",  # Int
+                      "MEIS2",  # Int
+                      "MEIS3" # Int
+                   
+                      
+                      
+                      
+                      
+)
+
+
+p1 <- DotPlot(seurat.obj.f,
+features = markers.to.plot1,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+
+p1
+
+```
+
+
+```{r error=FALSE, message=FALSE, warning=FALSE, include=FALSE, results='hide'}
+
+seurat.obj.f_singlets <- seurat.obj.f
+# Filter_2  <- ncol(seurat.obj.f_singlets)
+# 
+# amountfiltered2 <- Filter_1-Filter_2
+# 
+# #Making a table to display the amount of cells being filtered out with the minimal filtering of low quality cells applied to the snRNAseq dataset. 
+# cell_counts <- data.frame(Phase = c("Before Filtering", "After Filtering", "Amount Filtered"), Cell_Number = c(Filter_1, Filter_2, amountfiltered2))
+# 
+# print(cell_counts)
+
+# Remove unused objects in environment to save RAM
+# rm(seurat.obj.f, seurat.obj.f_doublets, sweep.res.list_seurat.obj.f, sweep.stats_seurat.obj.f, p, p1, p2)
+rm(seurat.obj.f)
+```
+
+
+###  04 Manual Doublet Removal 
+
+
+```{r error=FALSE, fig.height=11, fig.width=25, message=FALSE, warning=FALSE, include=FALSE}
+
+# Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
+
+f1 <- DotPlot(seurat.obj.f_singlets,
+features = markers.to.plot1,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+
+f1
+
+```
+
+
+```{r  error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+# Apply the name "SINGLET" or "DOUBLET" to a cluster based on the multidimensional dot plot
+
+doublet_clusters <- c(16,24)
+
+# Annotate metadata
+seurat.obj.f_singlets@meta.data <- seurat.obj.f_singlets@meta.data %>%
+  mutate(subclass.doublet = if_else(
+    seurat_clusters %in% doublet_clusters, "DOUBLET", "SINGLET"
+  ))
+
+# Change the identities to align with new subclass names and make umap
+Idents(seurat.obj.f_singlets) <- seurat.obj.f_singlets@meta.data$subclass.doublet
+
+f1 <- DimPlot(seurat.obj.f_singlets, reduction = "umap") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Before Manual Doublet Filtering")
+
+```
+
+```{r  echo=FALSE, error=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center', message=FALSE, warning=FALSE, results='hide'}
+# Double check the table to ensure SINGLET & DOUBLET cluster appear with this function
+table(Idents(seurat.obj.f_singlets))
+
+# Clean out the doublets manually that were identified 
+seurat.obj.f_cleaned <- subset(seurat.obj.f_singlets, idents = "DOUBLET", invert = TRUE)
+
+# Double check that the identity was removed 
+table(Idents(seurat.obj.f_cleaned))
+
+# Make umap to double check removal 
+f2 <- DimPlot(seurat.obj.f_cleaned, reduction = "umap") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle("After Manual Doublet Filtering")
+
+f1+f2
+
+# Remove unused objects in environment to save RAM
+rm(seurat.obj.f_singlets)
+```
+
+
+
+```{r echo=TRUE, error=FALSE, message=FALSE, warning=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+#Re-Cluster Singlets
+seurat.obj.f_cleaned <- SCTransform(seurat.obj.f_cleaned) %>%
+    RunPCA() %>%
+    FindNeighbors(dims = 1:40) %>%
+    FindClusters(resolution = 2, verbose = FALSE) %>%
+    RunUMAP(dims = 1:40)
+
+DimPlot(seurat.obj.f_cleaned, reduction = "umap", label = TRUE) +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Non-annotated Clusters for ", sample_name))
+
+DefaultAssay(seurat.obj.f_cleaned) <- "RNA"
+
+```
+
+
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+# Make mdd for all removed doublets 
+
+DotPlot(seurat.obj.f_cleaned,
+features = markers.to.plot1,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+```
+
+
+
+### 05 Annotation by Subclass
+
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+# Apply names to the clusters by subclass
+seurat.obj.f_cleaned@meta.data <- seurat.obj.f_cleaned@meta.data %>% mutate(subclass = dplyr::case_when(
+seurat_clusters == 0 ~ "PODO",
+seurat_clusters == 1 ~ "PODO",
+seurat_clusters == 2 ~ "PODO",
+seurat_clusters == 3 ~ "PODO",
+seurat_clusters == 4 ~ "TUBULES",
+seurat_clusters == 5 ~ "TUBULES", 
+seurat_clusters == 6 ~ "PODO",
+seurat_clusters == 7 ~ "PODO",
+seurat_clusters == 8 ~ "TUBULES",
+seurat_clusters == 9 ~ "TUBULES",
+seurat_clusters == 10 ~ "PODO",
+seurat_clusters == 11 ~ "PODO",
+seurat_clusters == 12 ~ "TUBULES",
+seurat_clusters == 13 ~ "PODO",
+seurat_clusters == 14 ~ "TUBULES",
+seurat_clusters == 15 ~ "TUBULES",
+seurat_clusters == 16 ~ "TUBULES",
+seurat_clusters == 17 ~ "INT",
+seurat_clusters == 18 ~ "TUBULES"
+
+))
+
+# Filter out the doublets
+
+seurat.obj.f_cleaned <- subset(seurat.obj.f_cleaned, subset = subclass == "DOUBLET", invert = TRUE)
+
+subclass_order <- c("PODO", "TUBULES", "INT" )
+
+seurat.obj.f_cleaned@meta.data$subclass <- factor(seurat.obj.f_cleaned@meta.data$subclass, levels = subclass_order)
+
+# Change the identities to align with new subclass names and make umap
+Idents(seurat.obj.f_cleaned) <- seurat.obj.f_cleaned@meta.data$subclass
+
+DimPlot(seurat.obj.f_cleaned, reduction = "umap", label = TRUE, label.size = 4) +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Subclass Annotation for ", sample_name))
+
+FeaturePlot(seurat.obj.f_cleaned, features = c("nCount_RNA", "nFeature_RNA" ))
+
+
+#qsave(seurat.obj.f_cleaned, here("Outputs","AnnotatedCAPSeurat.qs"))
+
+#qsave(seurat.obj.f_cleaned, "/Users/omidsajjadi/Desktop/Li Lab/Projects/CAP vs Tryp/Datasets/CAP_annotated-dataset.qs", preset = "high")
+```
+
+
+
+
+```{r  eval=FALSE, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+## Save Excel Spreadsheet 
+
+### This code creates an Excel Spreadsheet of DEG List by Subtype
+
+#The file will be located in the **Outputs** folder. 
+
+
+
+# Step 1: Find markers (grouped by subclass)
+all_markers <- FindAllMarkers(
+  seurat.obj.f_cleaned,
+  only.pos = TRUE,
+  min.pct = 0.5,
+  logfc.threshold = 1,
+  group.by = "subclass"  # grouping by subclass instead of cluster ID
+)
+
+# Step 2: Sort markers by descending log2FC, put gene column first
+all_markers <- all_markers %>%
+  arrange(desc(avg_log2FC)) %>%
+  select(gene, everything())
+
+# Step 3: Split markers by subclass (stored in 'cluster' column still)
+marker_list <- split(all_markers, all_markers$cluster)
+
+# Step 4: Reorder the list according to your subclass_order
+# First ensure you're only including subclasses that are actually present
+valid_subclasses <- subclass_order[subclass_order %in% names(marker_list)]
+
+# Reorder marker_list based on that
+marker_list <- marker_list[valid_subclasses]
+
+# Step 5: Write to Excel
+wb <- createWorkbook()
+
+for (subclass in names(marker_list)) {
+  addWorksheet(wb, sheetName = subclass)
+  writeData(wb, sheet = subclass, marker_list[[subclass]])
+}
+
+# Step 6: Save file
+date <- format(Sys.Date(), "%Y%m%d")
+saveWorkbook(
+  wb,
+  here("Outputs", paste0(date, "_", sample_name, "_FindAllMarkers_By_Subclass.xlsx")),
+  overwrite = TRUE
+)
+```
+
+
+
+### 06 Annotation by Type
+
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+# Change the order of the identities on the x-axis to create a diagonal on the dotplot, going from top to bottom of the "naming kidney cells" table
+markers.to.plot2 <- c("NPHS1",   # PODO
+                      "NPHS2",   # PODO
+                      "PODXL",   # PODO
+                      "PTPRO",   # PODO
+                      
+                      "CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                     
+                      "SLC22A8", # PT
+                      
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                      
+                
+                      "EMX1",    # CNT
+                      "VDR",     # CNT
+            
+                      
+                      "TMEM52B", # CNT, DT
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      "RHBG",    # DT
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      "TFCP2L1", # DN, LoH
+                      
+                    
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                      
+                     
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                     
+                 
+                      
+                      
+                      
+                      "PDGFRA", # Int
+                      "PDGFRB", # Int
+                      "DCN",    # Int
+                      "POSTN",  # Int
+                      "MEIS1",  # Int
+                      "MEIS2",  # Int
+                      "MEIS3"  # Int
+                      
+                      
+                      
+                      
+                      
+                      
+)
+
+subclass_order <- c("PODO","TUBULES", "INT")
+seurat.obj.f_cleaned$subclass <- factor(seurat.obj.f_cleaned$subclass, levels = subclass_order)
+DotPlot(seurat.obj.f_cleaned,
+features = markers.to.plot2,
+group.by = "subclass",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters") +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Subclass Annotation for ", sample_name))
+
+rm(markers.to.plot2)
+```
+
+
+
+### 07 Cell Proportions
+```{r include=FALSE}
+nrow(seurat.obj.f_cleaned@meta.data)
+sum(table(seurat.obj.f_cleaned$subclass))
+#^^^ Sanity check: The two number above have to match 
+
+table(seurat.obj.f_cleaned$subclass)
+
+seurat.obj.f_cleaned@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2))
+
+
+```
+
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+library(gt)
+
+# Create summary table
+subclass_summary <- seurat.obj.f_cleaned@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2)) %>%
+  arrange(desc(percent))
+
+# Add total row
+subclass_summary_with_total <- subclass_summary %>%
+  bind_rows(
+    tibble(subclass = "Total",
+           cell_count = sum(subclass_summary$cell_count),
+           percent = sum(subclass_summary$percent))
+  )
+
+
+subclass_summary_with_total %>%
+  gt() %>%
+  tab_header(
+    title = md("**📊 Cell Count and Percentage by Subclass**"),
+    subtitle = md("From `seurat.obj.f_cleaned` metadata")
+  ) %>%
+  fmt_number(columns = percent, decimals = 2) %>%
+  tab_options(
+    table.border.top.color = "black",
+    table.border.bottom.color = "black",
+    table.border.top.width = px(2),
+    table.border.bottom.width = px(2),
+    data_row.padding = px(4),
+    table.font.size = 13
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(rows = subclass == "Total")
+  )
+```
+
+
+```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+library(ggplot2)
+library(dplyr)
+library(extrafont)  # optional, for better font control on some systems
+
+# Make sure you have the font installed on your Mac:
+# (You can check in Font Book — most Macs already have Helvetica Neue Light)
+
+# Create subclass summary (if not done yet)
+subclass_summary <- seurat.obj.f_cleaned@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2))
+
+# Plot with Helvetica Neue Light
+ggplot(subclass_summary, aes(x = "", y = percent, fill = subclass)) +
+  geom_bar(stat = "identity", width = 0.6, color = "white", linewidth = 0.5) +
+  geom_text(aes(label = paste0(percent, "%")),
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 4, family = "Helvetica Neue Light") +
+  scale_fill_brewer(palette = "Pastel2") +
+  theme_void(base_family = "Helvetica Neue Light") +
+  theme(
+    legend.title = element_blank(),
+    legend.text = element_text(size = 11, family = "Helvetica Neue Light"),
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, size = 16, face = "plain", family = "Helvetica Neue Light")
+  ) +
+  labs(title = "CAP Cell Type Proportions")
+```
+
+
+```{r include=FALSE}
+##FREE MEMORY
+qsave(seurat.obj.f_cleaned, here("Outputs","CAPAnnotated.qs"))
+
+rm(filtered_kidney, filtered_kidney_out, FilteredDataset, RawDataset,
+   sc, meta, check1, check2, clusters, umap, y, seurat.obj,
+   seurat.obj.f, seurat.obj.f_singlets, amountfiltered1, amountfiltered2, amountfiltered3,
+   Filter_1, Filter_2, Filter_3, cell_counts, subclass_summary, subclass_summary_with_total,comp, f1, f2, markers.to.plot1, p1,p2, p3, resolution_value, subclass_order, target_ct, p4, doublet_clusters)
+
+gc()
+```
+
+
+
+
+### 08 Tubules Subsetting
+```{r include=FALSE}
+#seurat.obj.f_cleaned <- qread(here("Outputs", "CAPAnnotated.qs"))
+#here Iam subsettign my tubules
+head(seurat.obj.f_cleaned)
+
+colnames(seurat.obj.f_cleaned@meta.data)[ colnames(seurat.obj.f_cleaned@meta.data) == "subclass"] <- "celltype"
+
+seurat.tubules <- subset(seurat.obj.f_cleaned, subset = celltype == "TUBULES")
+
+head(seurat.tubules)
+
+rm(seurat.obj.f_cleaned)
+```
+
+```{r echo=TRUE,fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+seurat.tubules.transformed<- SCTransform(seurat.tubules) %>%
+    RunPCA() %>%
+    FindNeighbors(dims = 1:4) %>%
+    FindClusters(resolution = 0.3, verbose = FALSE) %>%
+    RunUMAP(dims = 1:4)
+
+DimPlot(seurat.tubules.transformed, reduction = "umap", label = TRUE) +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Non-annotated Clusters for Subcluster TUBULES"))
+
+DefaultAssay(seurat.tubules.transformed) <- "RNA"
+```
+
+```{r echo=TRUE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+markers.to.plot2 <- c("CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                      "SLC22A6", # PT
+                      "SLC22A8", # PT
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                
+                      "EMX1",    # CNT
+                      "VDR",     # CNT
+            
+                      
+                      "TMEM52B", # CNT, DT
+                      
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      "RHBG",    # DT
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      "TFCP2L1", # DN, LoH
+                      
+                      "UPK1A",   #DmC
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                  
+                      "UMOD",    # LoH
+                      "AQP1",    # LoH
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                      
+                      
+                 
+                      "KRT19",   # UE
+                      "FOXQ1"  # UE
+                    
+                      
+                      
+)
+
+
+DotPlot(seurat.tubules.transformed,
+features = markers.to.plot2,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+```
+
+
+
+
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+
+seurat.tubules.cleaned.new <- seurat.tubules.transformed
+
+seurat.tubules.cleaned.new@meta.data <- seurat.tubules.cleaned.new@meta.data %>% mutate(subclass = dplyr::case_when(
+seurat_clusters == 0 ~ "Unknown",
+seurat_clusters == 1 ~ "PT",
+seurat_clusters == 2 ~ "PT",
+seurat_clusters == 3 ~ "CNT",
+seurat_clusters == 4 ~ "PT",
+seurat_clusters == 5 ~ "PT",
+seurat_clusters == 6 ~ "LOH"
+
+))
+
+# Filter out the doublets
+
+subclass_order <- c("PT","LOH","CNT",  "Unknown")
+
+seurat.tubules.cleaned.new@meta.data$subclass <- factor(seurat.tubules.cleaned.new@meta.data$subclass, levels = subclass_order)
+
+# Change the identities to align with new subclass names and make umap
+Idents(seurat.tubules.cleaned.new) <- seurat.tubules.cleaned.new@meta.data$subclass
+
+DimPlot(seurat.tubules.cleaned.new, reduction = "umap", label = TRUE, label.size = 4) +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Subclass Annotation for TUBULES"))
+
+FeaturePlot(seurat.tubules.cleaned.new, features = c("nCount_RNA", "nFeature_RNA" ))
+```
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+markers.to.plot2 <- c("CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                     
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                
+                     
+                     
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      "TFCP2L1", # DN, LoH
+                      
+                      
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                  
+                      "UMOD",    # LoH
+                      "AQP1",    # LoH
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                       "RHBG",    # DT
+                       "EMX1",    # CNT
+                      "VDR",     # CNT
+            
+                      
+                      "TMEM52B", # CNT, DT
+                      
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      
+                 
+                      "KRT19",   # UE
+                      "FOXQ1"  # UE
+                    
+                      
+                      
+)
+
+DotPlot(seurat.tubules.cleaned.new,
+features = markers.to.plot2,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+
+```
+
+
+
+
+```{r include=FALSE}
+nrow(seurat.tubules.cleaned.new@meta.data)
+sum(table(seurat.tubules.cleaned.new$subclass))
+#^^^ Sanity check: The two number above have to match 
+
+table(seurat.tubules.cleaned.new$subclass)
+
+seurat.tubules.cleaned.new@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2))
+
+
+```
+
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+library(gt)
+
+# Create summary table
+subclass_summary <- seurat.tubules.cleaned.new@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2)) %>%
+  arrange(desc(percent))
+
+# Add total row
+subclass_summary_with_total <- subclass_summary %>%
+  bind_rows(
+    tibble(subclass = "Total",
+           cell_count = sum(subclass_summary$cell_count),
+           percent = sum(subclass_summary$percent))
+  )
+
+
+subclass_summary_with_total %>%
+  gt() %>%
+  tab_header(
+    title = md("**📊 Cell Count and Percentage by Subclass**"),
+    subtitle = md("From `seurat.tubules.cleaned.new` metadata")
+  ) %>%
+  fmt_number(columns = percent, decimals = 2) %>%
+  tab_options(
+    table.border.top.color = "black",
+    table.border.bottom.color = "black",
+    table.border.top.width = px(2),
+    table.border.bottom.width = px(2),
+    data_row.padding = px(4),
+    table.font.size = 13
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(rows = subclass == "Total")
+  )
+```
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+library(ggplot2)
+library(dplyr)
+library(extrafont)  # optional, for better font control on some systems
+
+# Make sure you have the font installed on your Mac:
+# (You can check in Font Book — most Macs already have Helvetica Neue Light)
+
+# Create subclass summary (if not done yet)
+subclass_summary <- seurat.tubules.cleaned.new@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2))
+
+# Plot with Helvetica Neue Light
+ggplot(subclass_summary, aes(x = "", y = percent, fill = subclass)) +
+  geom_bar(stat = "identity", width = 0.6, color = "white", linewidth = 0.5) +
+  geom_text(aes(label = paste0(percent, "%")),
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 4, family = "Helvetica Neue Light") +
+  scale_fill_brewer(palette = "Pastel2") +
+  theme_void(base_family = "Helvetica Neue Light") +
+  theme(
+    legend.title = element_blank(),
+    legend.text = element_text(size = 11, family = "Helvetica Neue Light"),
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, size = 16, face = "plain", family = "Helvetica Neue Light")
+  ) +
+  labs(title = "CAP Tubules Cell Type Proportions")
+
+
+# qsave(seurat.tubules.cleaned.new, here("Outputs", "CAP_Tubules_Annotated.qs"))
+```
+
+
+
+```{r include=FALSE}
+#FREE MEMORY
+rm(
+  RawDataset, FilteredDataset, filtered_kidney, filtered_kidney_out,
+  sc, meta, umap, clusters, check1, check2,
+  seurat.obj, seurat.obj.f, seurat.obj.f_singlets, seurat.tubules.cleaned.new,
+  resolution_value, all_markers, marker_list, sorted_cluster_names,
+  subclass_order, sample_name, doublet_clusters, cell_counts,
+  p1, p2, f1, f2, Start, Filter_1, Filter_2, amountfiltered1, amountfiltered2,
+  markers.to.plot1, markers.to.plot2,
+  comp, target_ct,
+  seurat.tubules, seurat.tubules.transformed, seurat.tubules.cleaned,
+  seurat.tubules.cleaned.new, subclass_order, subclass_summary, subclass_summary_with_total, x
+)
+```
+
+
+
+# **Integration of CAP and TRYP **
+```{r echo=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+# Core packages
+library(Seurat)
+library(qs)
+library(ggplot2)
+library(patchwork)
+
+# 1) Load your Seurat objects from .qs
+TRYP <- qread(here("Outputs","TrypAnnotated.qs"))
+CAP  <- qread(here("Outputs","CAPAnnotated.qs"))
+
+# 2) Sanity: make sure they both use the same assay name (typically "RNA")
+DefaultAssay(TRYP) <- "RNA"
+DefaultAssay(CAP)  <- "RNA"
+
+# 3) Make cell names unique and add a batch label
+TRYP <- RenameCells(TRYP, add.cell.id = "TRYP")
+CAP  <- RenameCells(CAP,  add.cell.id = "CAP")
+
+TRYP$batch <- "TRYP"
+CAP$batch  <- "CAP"
+
+# (Optional but recommended) Keep overlapping features to avoid feature-mismatch noise
+common_features <- intersect(rownames(TRYP), rownames(CAP))
+TRYP <- subset(TRYP, features = common_features)
+CAP  <- subset(CAP,  features = common_features)
+
+# 4) Merge into ONE object
+obj <- merge(TRYP, y = CAP)
+DefaultAssay(obj) <- "RNA"
+
+
+# 2) If the merged assay *already* contains split layers like counts.1/data.2, JOIN first
+#    (This makes the assay single-layer again so we can split exactly once by 'batch')
+if (length(Layers(obj[["RNA"]])) > 3 || any(grepl("\\.\\d+$", Layers(obj[["RNA"]])))) {
+  message("Joining pre-existing per-batch layers in merged object...")
+  obj[["RNA"]] <- JoinLayers(obj[["RNA"]])
+}
+
+# 3) Now split exactly once by your batch metadata, and only for raw/normalized matrices
+#    (don't layer scale.data unless you really want to)
+obj[["RNA"]] <- split(
+  obj[["RNA"]],
+  f      = obj$batch,
+  layers = c("counts","data")
+)
+
+
+
+##############SANITY CHECK###############
+# Expect something like: "TRYP", "CAP"
+Layers(obj[["RNA"]])
+
+# Compare to unique batches:
+sort(unique(obj$batch))
+
+
+# Per-batch counts from metadata
+table(obj$batch)
+
+# Per-layer cell counts from matrices (use 'layer=' in Seurat v5)
+sapply(Layers(obj[["RNA"]]), function(L) {
+  ncol(GetAssayData(obj, assay = "RNA", layer = L))  # columns = cells
+})
+
+# Per-batch counts from metadata
+table(obj$batch)
+
+# Per-layer cell counts from matrices (use 'layer=' in Seurat v5)
+sapply(Layers(obj[["RNA"]]), function(L) {
+  ncol(GetAssayData(obj, assay = "RNA", layer = L))  # columns = cells
+})
+#########################################################
+
+
+DefaultAssay(obj) <- "RNA"
+
+
+# 6) Run a quick unintegrated PCA/UMAP (optional, for comparison)
+obj <- NormalizeData(obj)
+obj <- FindVariableFeatures(obj)
+obj <- ScaleData(obj)
+obj <- RunPCA(obj)
+obj <- FindNeighbors(obj, dims = 1:30, reduction = "pca")
+obj <- FindClusters(obj, resolution = 0.6, cluster.name = "unintegrated_clusters")
+obj <- RunUMAP(obj, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated")
+
+p_unint <- DimPlot(obj, reduction = "umap.unintegrated", group.by = c("batch", "unintegrated_clusters"))
+
+
+# 7) INTEGRATE the layers (CCA), producing a shared low-dim space
+obj <- IntegrateLayers(
+  object        = obj,
+  method        = CCAIntegration,
+  orig.reduction= "pca",
+  new.reduction = "integrated.sct",
+  verbose       = FALSE
+)
+
+# 8) Re-join layers (so downstream functions that expect a single matrix behave as usual)
+obj[["RNA"]] <- JoinLayers(obj[["RNA"]])
+rm(TRYP, CAP)
+# 9) Neighbors/Clusters/UMAP on the integrated space
+obj <- FindNeighbors(obj, reduction = "integrated.sct", dims = 1:40)
+obj <- FindClusters(obj, resolution = 2)
+obj <- RunUMAP(obj, dims = 1:40, reduction = "integrated.sct")
+
+# 10) Plots
+p_unint <- DimPlot(obj, reduction = "umap.unintegrated", group.by = c("batch", "unintegrated_clusters"))
+print(p_unint)
+
+p_int1 <- DimPlot(obj, reduction = "umap", group.by = "batch")
+p_int2 <- DimPlot(obj, reduction = "umap", group.by = "seurat_clusters", label = TRUE) + NoLegend()
+p_int1 + p_int2
+
+
+
+```
+
+
+
+```{r echo=TRUE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+# Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
+markers.to.plot1 <- c("EYA1",    # NPC
+                      "SIX2",    # NPC
+                      "CITED1",  # NPC
+                      
+                      "NPHS1",   # PODO
+                      "NPHS2",   # PODO
+                      "PODXL",   # PODO
+                      "CLIC5",   # PODO
+                      "MAFBF",   # PODO
+                      "PTPRO",   # PODO
+                      
+                      "CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                      "SLC22A1", # PT
+                      "SLC22A2", # PT
+                      "SLC22A3", # PT
+                      "SLC22A6", # PT
+                      "SLC22A8", # PT
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                      "SLC5A1",  # PT
+                      "SLC5A2",  # PT
+                      "ABCC2",   # PT
+                      "ABCG2",   # PT
+                      "SLC47A1", # PT
+                      
+                      "EMX1",    # CNT
+                      "VDR",     # CNT
+            
+                      "TMEM52B", # CNT, DT
+                      "SLC12A3", # DT
+                      "GATA3",   # DT, PC, UE
+                      "RHBG",    # DT
+                      "TFAP2A",  # DN, DT
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                      "TFCP2L1", # DN, LoH
+                      
+                      
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                      
+                     
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                      
+                      
+                      "CA2",       # IC
+                      
+                 
+                      "KRT19",   # UE
+                      "FOXQ1",   # UE
+                      
+                      
+                      "WNT11",   # UPC
+                      
+                      
+                      
+                      "PDGFRA", # Int
+                      "PDGFRB", # Int
+                      "DCN",    # Int
+                      "POSTN",  # Int
+                      "MEIS1",  # Int
+                      "MEIS2",  # Int
+                      "MEIS3",  # Int
+                      "MKI67", #prolif
+                      "TOP2A"#prolif
+                      
+                      
+                      
+                      
+                      
+)
+markers.to.plot2 <- c("LRP2",         # PTS1, PTS2, PTS3
+"SLC5A12",      # PTS1
+"SLC13A3",      # PTS2
+"SLC16A9",      # PTS3
+"EPHA7",        # DTL
+"CRYAB",        # DTL
+"SLC12A1",      # TAL1, TAL2, MD
+"CLDN16",       # TAL1
+"CLDN10",       # TAL2
+"NOS1",         # MD
+"SLC12A3",      # DCT1, DCT2
+"EGF",          # DCT1
+"SLC8A1",       # CNT, DCT2
+"AQP2",         # PC
+"SLC4A1",       # ICA
+"KIT",          # ICA
+"SLC26A4",      # ICB
+"NPHS1",        # PODO
+"NCAM1"         # PEC
+                      
+)
+
+Idents(obj) <- obj$seurat_clusters
+
+p1 <- DotPlot(obj,
+features = markers.to.plot1,
+group.by = "seurat_clusters",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+
+p1
+
+p2 <- DotPlot(obj,
+features = markers.to.plot2,
+group.by = "seurat_clusters",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+
+p2
+```
+
+
+```{r}
+# FeaturePlot(obj, features = c("RPS12", "RPL36","DLG2","OLFML3"), reduction = "umap")
+# FeaturePlot(obj, features = c("CCNB1", "MKI67","PLK1","PCNA", "CHEK1"), reduction = "umap")
+# FeaturePlot(obj, features = c("OLFM3", "TUBA1A", "STMN1"), reduction = "umap")
+# 
+# FeaturePlot(obj, features = c("NPHS1", "PTPRO", "NPHS2"), reduction = "umap")
+# 
+ 
+# FeaturePlot(obj, features = c("COL1A1", "COL3A1", "DCN", "LUM", "PDGFRA", "PDGFRB"), reduction = "umap")
+# 
+# 
+# FeaturePlot(obj, features = c("COL1A1", "COL3A1", "DCN", "LUM"), reduction = "umap") # interstitial markers
+# FeaturePlot(obj, features = c("NPHS1", "NPHS2", "SYNPO"), reduction = "umap")        # podocyte markers
+ #FeaturePlot(obj, features = c("AQP2", "SCNN1G", "SLC12A3"), reduction = "umap")        
+```
+
+
+
+
+
+
+
+
+
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+# Apply names to the clusters by subclass
+
+
+obj@meta.data <- obj@meta.data %>% mutate(subclass = dplyr::case_when(
+seurat_clusters == 0 ~ "PODO",
+seurat_clusters == 1 ~ "INT",
+seurat_clusters == 2 ~ "PODO",
+seurat_clusters == 3 ~ "PODO",
+seurat_clusters == 4 ~ "PODO",
+seurat_clusters == 5 ~ "PODO", 
+seurat_clusters == 6 ~ "PEC",
+seurat_clusters == 7 ~ "PT",
+seurat_clusters == 8 ~ "PODO",
+seurat_clusters == 9 ~ "PODO",
+seurat_clusters == 10 ~ "INT",
+seurat_clusters == 11 ~ "PT",
+seurat_clusters == 12 ~ "PODO",
+seurat_clusters == 13 ~ "PODO",
+seurat_clusters == 14 ~ "INT",
+seurat_clusters == 15 ~ "LOH",
+seurat_clusters == 16 ~ "PT",
+seurat_clusters == 17 ~ "PODO",
+seurat_clusters == 18 ~ "INT",
+seurat_clusters == 19 ~ "CNT",
+seurat_clusters == 20 ~ "PT",
+seurat_clusters == 21 ~ "PT",
+seurat_clusters == 22 ~ "INT",
+seurat_clusters == 23 ~ "INT",
+seurat_clusters == 24 ~ "DOUBLET",
+seurat_clusters == 25 ~ "PC",
+seurat_clusters == 26 ~ "INT",
+seurat_clusters == 27 ~ "DOUBLET",
+seurat_clusters == 28 ~ "PC"
+
+
+
+
+))
+
+# Filter out the doublets
+
+seurat.obj.f_cleaned <- subset(obj, subset = subclass == "DOUBLET", invert = TRUE)
+
+subclass_order <- c("PEC","PT","LOH", "CNT","PC","PODO", "INT")
+
+seurat.obj.f_cleaned@meta.data$subclass <- factor(seurat.obj.f_cleaned@meta.data$subclass, levels = subclass_order)
+
+# Change the identities to align with new subclass names and make umap
+Idents(seurat.obj.f_cleaned) <- seurat.obj.f_cleaned@meta.data$subclass
+
+DimPlot(seurat.obj.f_cleaned, reduction = "umap", label = TRUE, label.size = 4) +  
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ggtitle(paste0("Subclass Annotation for Integrated Tryp + CAP Data"))
+
+
+
+FeaturePlot(obj, features = c("MKI67", "TOP2A", "CENPF", "PCNA"), reduction = "umap")
+```
+
+
+
+```{r echo=TRUE, error=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+markers.to.plot6 <- c(
+  
+                      
+                      "NPHS1",   # PODO
+                      "NPHS2",   # PODO
+                      "PODXL",   # PODO
+                     
+                      
+                      "PTPRO",   # PODO
+                      
+                      "CFH",     # PEC
+                      "CLDN1",   # PEC
+         
+                   
+                      
+                      "SLC34A1", # PT
+                      "LRP2",    # PT
+                      "HNF4A",   # PT
+                     
+                      
+                      
+                      
+                      "SLC12A3", # DT
+                      
+                      "RHBG",    # DT
+                      
+                      "SLC12A1", # DN, LoH
+                      "POU3F3",  # DN
+                    
+                      
+                      
+                      "SPTSSB",  # LoH
+                      "MECOM",   # LoH
+                      "ESRRG",   # LoH
+                      "UMOD",
+                     "EMX1",    # CNT
+                     "GATA3",   # DT, PC, UE
+                     
+            
+                      "TMEM52B", # CNT, DT
+                      "AQP2",    # PC
+                      "SCNN1G",  # PC
+                      
+                      
+                     
+                      
+                 
+                     
+                      
+                      
+                      
+                      
+                      "PDGFRA", # Int
+                      "PDGFRB", # Int
+                      "DCN",    # Int
+                      "POSTN",  # Int
+                      "MEIS1",  # Int
+                      "MEIS2",  # Int
+                      "MEIS3",  # Int
+                      
+                      "MKI67", #prolif
+                      "TOP2A"#prolif
+                      
+                      
+                      
+                      
+                      
+)
+
+head(obj)
+
+
+subclass_order <- c("PODO","PEC","PT","LOH", "CNT","PC", "INT")
+
+seurat.obj.f_cleaned$subclass <- factor(obj$subclass, levels = subclass_order)
+DotPlot(seurat.obj.f_cleaned,
+features = markers.to.plot6,
+group.by = "subclass",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+```
+
+
+
+
+```{r}
+qsave(seurat.obj.f_cleaned, here("Outputs","TrypCAPIntegratedAnnotated.qs"))
+rm(obj, seurat.obj.f_cleaned )
+```
+
+
+
+# **Tryp vs. CAP Comparision**
+
+```{r echo=FALSE, , fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+trypannotated <- qread(here("Outputs", "TrypAnnotated.qs"))
+
+capannotated <- qread(here("Outputs", "CAPAnnotated.qs"))
+
+p1 <- DimPlot(trypannotated)
+p2 <- DimPlot(capannotated)
+cowplot::plot_grid(p1, p2, ncol = 2, scale = .85) 
+```
+
+
+## 01 Cell Type Porportions
+
+
+```{r echo=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+library(ggplot2)
+library(dplyr)
+library(extrafont)  # optional, for better font control on some systems
+
+# Make sure you have the font installed on your Mac:
+# (You can check in Font Book — most Macs already have Helvetica Neue Light)
+
+# Create subclass summary (if not done yet)
+subclass_summary <- capannotated@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2))
+
+# Plot with Helvetica Neue Light
+p1 <- ggplot(subclass_summary, aes(x = "", y = percent, fill = subclass)) +
+  geom_bar(stat = "identity", width = 0.6, color = "white", linewidth = 0.5) +
+  geom_text(aes(label = paste0(percent, "%")),
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 4, family = "Helvetica Neue Light") +
+  scale_fill_brewer(palette = "Pastel2") +
+  theme_void(base_family = "Helvetica Neue Light") +
+  theme(
+    legend.title = element_blank(),
+    legend.text = element_text(size = 11, family = "Helvetica Neue Light"),
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5, size = 16, face = "plain", family = "Helvetica Neue Light")
+  ) +
+  labs(title = "CAP Cell Type Proportions")
+
+
+
+
+
+# Make sure you have the font installed on your Mac:
+# (You can check in Font Book — most Macs already have Helvetica Neue Light)
+
+# Create subclass summary (if not done yet)
+subclass_summary <- trypannotated@meta.data %>%
+  count(subclass, name = "cell_count") %>%
+  mutate(percent = round(100 * cell_count / sum(cell_count), 2))
+
+# Plot with Helvetica Neue Light
+p2 <- ggplot(subclass_summary, aes(x = "", y = percent, fill = subclass)) +
+  geom_bar(stat = "identity", width = 0.6, color = "white", linewidth = 0.5) +
+  geom_text(aes(label = paste0(percent, "%")),
+            position = position_stack(vjust = 0.5),
+            color = "black", size = 4, family = "Helvetica Neue Light") +
+  scale_fill_brewer(palette = "Pastel2") +
+  theme_void(base_family = "Helvetica Neue Light") +
+  theme(
+    legend.title = element_blank(),
+    legend.text = element_text(size = 11, family = "Helvetica Neue Light"),
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, size = 16, face = "plain", family = "Helvetica Neue Light")
+  ) +
+  labs(title = "Tryp Cell Type Proportions")
+
+cowplot::plot_grid(p1, p2, ncol = 2, scale = .85)  + draw_label("Tryp vs. CAP Cell Types", y = .95, size = 22, fontface = "bold")
+```
+
+## 02 DEG Differences
+- Genes on the right (positive log2FC) → higher in Tryp (single-cell).
+- Genes on the left (negative log2FC) → higher in CAP (single-nucleus).
+- Nuclear-enriched genes often include long or intronic RNAs.
+
+```{r echo=FALSE, fig.align='center', fig.height=9, fig.width=14, message=FALSE, warning=FALSE, dpi=300}
+
+# ================================
+# 🏷️ Label Dataset Origin
+# ================================
+trypannotated$dataset <- "SingleCell"
+capannotated$dataset  <- "SingleNucleus"
+Idents(trypannotated) <- "SingleCell"
+Idents(capannotated) <- "SingleNucleus"
+# ================================
+# 🔗 Merge and Join Layers (Seurat v5)
+# ================================
+merged_data <- merge(trypannotated, y = capannotated, add.cell.ids = c("Tryp", "CAP"))
+merged_data <- JoinLayers(merged_data)  # <- important for FindMarkers()
+
+
+
+# --- Params (tune as needed) ---
+pCutoff  <- 0.05
+FCcutoff <- 0.5
+
+# --- DEG (assumes you already merged + JoinLayers + set Idents) ---
+DefaultAssay(merged_data) <- "RNA"
+deg_results <- FindMarkers(
+  merged_data,
+  ident.1 = "SingleCell", ident.2 = "SingleNucleus",
+  test.use = "wilcox", logfc.threshold = 0.75, min.pct = 0.5
+) %>% tibble::rownames_to_column("gene")
+
+# --- Avoid Inf on -log10(0); compute plotting y and pick top genes ---
+deg_results <- deg_results %>%
+  mutate(
+    p_val_adj = ifelse(is.finite(p_val_adj) & p_val_adj > 0, p_val_adj, .Machine$double.xmin),
+    neglog10p = -log10(p_val_adj),
+    side = dplyr::case_when(
+      p_val_adj < pCutoff & avg_log2FC >=  FCcutoff ~ "Tryp_up",
+      p_val_adj < pCutoff & avg_log2FC <= -FCcutoff ~ "CAP_up",
+      TRUE ~ "NotSig"
+    )
+  )
+
+top_tryp <- deg_results %>%
+  filter(side == "Tryp_up") %>% arrange(p_val_adj, desc(avg_log2FC)) %>% slice_head(n = 15)
+
+top_cap  <- deg_results %>%
+  filter(side == "CAP_up")  %>% arrange(p_val_adj, avg_log2FC)   %>% slice_head(n = 15)
+
+labels_df <- bind_rows(top_tryp, top_cap)
+
+# --- y-axis that never cuts off (dynamic headroom) ---
+y_max <- max(deg_results$neglog10p, na.rm = TRUE)
+y_pad <- max(3, 0.02 * y_max)  # a little headroom
+
+# --- Volcano ---
+library(ggrepel)
+library(ggplot2)
+
+volcano_plot <- ggplot(deg_results, aes(x = avg_log2FC, y = neglog10p)) +
+  geom_point(aes(color = side), alpha = 0.75, size = 1.5) +
+  scale_color_manual(
+    values = c(Tryp_up = "#E64B35", CAP_up = "#4C78A8", NotSig = "grey80"),
+    labels  = c(Tryp_up = "Higher in CAP (snRNA)", CAP_up = "Higher in Tryp (scRNA)", NotSig = "Not significant"),
+    breaks  = c("Tryp_up","CAP_up","NotSig")
+  ) +
+  geom_hline(yintercept = -log10(pCutoff), linetype = "dashed") +
+  geom_vline(xintercept = c(-FCcutoff, FCcutoff), linetype = "dashed") +
+  ggrepel::geom_text_repel(
+    data = labels_df,
+    aes(label = gene),
+    size = 3.2,
+    min.segment.length = 0,
+    segment.size = 0.3,
+    box.padding = 0.35,
+    point.padding = 0.2,
+    max.overlaps = Inf
+  ) +
+  coord_cartesian(ylim = c(0, y_max + y_pad), clip = "off") +
+  theme_classic(base_family = "Helvetica Neue") +
+  labs(
+    title = "DEG Volcano: Single-Cell (Trp) vs Single-Nucleus (CAP)",
+    x = "Log2 Fold Change (Tryp / CAP)",
+    y = expression(-log[10]("adj. p-value")),
+    color = NULL
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "top"
+  ) 
+
+# Save big enough so labels fit
+#ggsave(here("Outputs", "DEG_Volcano_Tryp_vs_CAP.png"), volcano_plot, width = 9, height = 7, dpi = 300)
+
+volcano_plot
+```
+
+- RPS12 and RPL36 are identified to be IC-A cells in healthy kpmp dataset
+- AC006355.2 is identified to be in both DTL and ICA according to kpmp but PODO in HFKW17
+- **more time needs to be spent looking into these top hits**
+
+
+## 03 Gene Detecion & Sensativity
+- Points higher on y-axis = more genes detected.
+- The slope and spread reveal capture efficiency (scRNA often detects more genes per UMI).
+
+```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+library(dplyr)
+library(ggplot2)
+
+# Extract metadata from each
+tryp_meta <- trypannotated@meta.data %>%
+  mutate(dataset = "Tryp")
+
+cap_meta <- capannotated@meta.data %>%
+  mutate(dataset = "CAP")
+
+# Combine
+meta_combined <- bind_rows(tryp_meta, cap_meta)
+
+# Gene detection plot
+ggplot(meta_combined, aes(x = nCount_RNA, y = nFeature_RNA, color = dataset)) +
+  geom_point(alpha = 0.3, size = 1.5) +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic(base_family = "Helvetica Neue") +
+  theme(legend.position = "right",
+        text = element_text(size = 13),
+        axis.title = element_text(face = "bold")) +
+  labs(title = "Gene Detection Sensitivity",
+       x = "Total UMI Count (log10)",
+       y = "Number of Genes Detected (log10)")
+```
+
+
+
+
+## 04 Pseudobulk Expression
+- A strong diagonal correlation (ρ close to 1) = biological similarity.
+- ρ = 0.839 (Spearman) means that the rank order of gene expression between your single-cell (Tryp) and single-nucleus (CAP) datasets is strongly preserved.
+- genes that are highly expressed in single-cell data tend to also be highly expressed in single-nucleus data,
+- even though absolute expression levels might differ.
+```{r echo=FALSE, fig.width=14, fig.height=9, dpi=300, fig.align='center'}
+# Compute average expression for each dataset
+avg_tryp <- AverageExpression(trypannotated, assays = "RNA", slot = "data")$RNA
+avg_cap  <- AverageExpression(capannotated, assays = "RNA", slot = "data")$RNA
+
+# Ensure numeric matrices
+avg_tryp <- as.matrix(avg_tryp)
+avg_cap  <- as.matrix(avg_cap)
+
+# Align by common genes
+common_genes <- intersect(rownames(avg_tryp), rownames(avg_cap))
+avg_tryp <- avg_tryp[common_genes, , drop = FALSE]
+avg_cap  <- avg_cap[common_genes, , drop = FALSE]
+
+# --- Flatten if there are multiple columns (average per gene across all cells)
+# Sometimes AverageExpression returns one column per identity or cluster.
+# You can collapse it into a single numeric vector of average expression per gene.
+if (ncol(avg_tryp) > 1) avg_tryp <- rowMeans(avg_tryp)
+if (ncol(avg_cap)  > 1) avg_cap  <- rowMeans(avg_cap)
+
+# Compute Spearman correlation
+gene_cor <- cor(avg_tryp, avg_cap, method = "spearman", use = "pairwise.complete.obs")
+mean_cor <- round(gene_cor, 3)
+
+# --- Create a dataframe for plotting ---
+plot_data <- data.frame(
+  Tryp = avg_tryp,
+  CAP  = avg_cap
+)
+
+# --- Plot ---
+library(ggplot2)
+
+ggplot(plot_data, aes(x = Tryp, y = CAP)) +
+  geom_point(alpha = 0.4, size = 1) +
+  geom_smooth(method = "lm", se = FALSE, color = "gray40") +
+  theme_classic(base_family = "Helvetica Neue") +
+  labs(
+    title = paste0("Pseudobulk Gene Expression Correlation (ρ = ", mean_cor, ")"),
+    x = "Average Expression (Tryp)",
+    y = "Average Expression (CAP)"
+  )
+```
+
+
+
+```{r echo=FALSE, fig.align='center', fig.height=9, fig.width=14, dpi=300}
+# ================================
+# 📦 Load libraries
+# ================================
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(pheatmap)
+library(here)
+
+# ================================
+# 🧩 1. Average expression per cell type
+# ================================
+avg_tryp_by_ct <- AverageExpression(trypannotated, assays = "RNA", slot = "data", group.by = "subclass")$RNA
+avg_cap_by_ct  <- AverageExpression(capannotated,  assays = "RNA", slot = "data", group.by = "subclass")$RNA
+
+# Ensure numeric matrices
+avg_tryp_by_ct <- as.matrix(avg_tryp_by_ct)
+avg_cap_by_ct  <- as.matrix(avg_cap_by_ct)
+
+# ================================
+# 🧬 2. Keep common genes
+# ================================
+common_genes <- intersect(rownames(avg_tryp_by_ct), rownames(avg_cap_by_ct))
+avg_tryp_by_ct <- avg_tryp_by_ct[common_genes, ]
+avg_cap_by_ct  <- avg_cap_by_ct[common_genes, ]
+
+# ================================
+# 📈 3. Compute Pearson correlation matrix
+# ================================
+cor_mat <- cor(avg_tryp_by_ct, avg_cap_by_ct, method = "pearson", use = "pairwise.complete.obs")
+
+# Save the numeric matrix (optional)
+write.csv(cor_mat, here("Outputs", "Clusterwise_PearsonCorrelation_Tryp_vs_CAP.csv"))
+
+# ================================
+# 🎨 4. Visualize heatmap
+# ================================
+pheatmap(
+  cor_mat,
+  color = colorRampPalette(c("navy", "white", "firebrick3"))(50),
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  main = "Cluster-wise Pearson Correlation (Tryp vs CAP)",
+  fontsize = 11,
+  border_color = NA
+)
+
+# ================================
+# 🧾 5. Extract and summarize matching cell-type correlations
+# ================================
+# Works if both datasets share the same cell-type names
+if (all(colnames(cor_mat) %in% rownames(cor_mat))) {
+  match_cor <- diag(cor_mat[colnames(cor_mat), colnames(cor_mat)])
+  match_summary <- data.frame(
+    CellType = names(match_cor),
+    Pearson_r = round(match_cor, 3)
+  ) %>%
+    arrange(desc(Pearson_r))
+  
+  print(match_summary)
+  write.csv(match_summary, here("Outputs", "Matching_Celltype_PearsonCorrelation.csv"), row.names = FALSE)
+}
+
+# ================================
+# ✅ Optional bar plot of matching cell-type correlations
+# ================================
+if (exists("match_summary")) {
+  ggplot(match_summary, aes(x = reorder(CellType, Pearson_r), y = Pearson_r)) +
+    geom_col(fill = "#2b83ba") +
+    coord_flip() +
+    theme_classic(base_family = "Helvetica Neue") +
+    labs(
+      title = "Matching Cell-Type Pearson Correlation (Tryp vs CAP)",
+      x = NULL,
+      y = "Pearson r"
+    ) +
+    geom_hline(yintercept = 0.7, linetype = "dashed", color = "gray40") +
+    annotate("text", y = 0.72, x = Inf, label = "≈ strong correlation", hjust = 1.1, vjust = 0, size = 3.2)
+}
+```
+
+
+
+
+
+```{r include=FALSE}
+#Free Memory
+
+rm(subclass_summary, subclass_summary_with_total, Datasets, Outputs, p1, p2, seurat.obj.f_cleaned, avg_cap, avg_cap_by_ct,avg_tryp_by_ct,avg_tryp, cap_meta,capannotated, trypannotated, combined, cor_mat, deg_results, deg_table,labels_df, match_summary, merged_data, meta_combined, plot_data, top_cap, top_down, top_tryp,top_up,tryp_meta, trypannotated, y_max, y_pad, volcano_plot, pCutoff, mean_cor, match_cor, highlight_genes, FCcutoff, common_genes, gene_cor)
+
+gc()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Session Info
+
+```{r session info, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+
+sessionInfo()
+
+```
+
