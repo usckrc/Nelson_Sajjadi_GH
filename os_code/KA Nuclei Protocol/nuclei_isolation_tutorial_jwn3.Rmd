@@ -1,0 +1,326 @@
+---
+title: "Nuclei Isolation Tutorial"
+subtitle: "Optimized for Kidney Synthetic Assembloids"
+author: "Jonathan Nelson and Omid Sajjadi"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: true
+    number_sections: false
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+    
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed((12345))
+```
+
+```{r class.source='fold-show', include=FALSE}
+#install.packages("openxlsx")
+#install.packages("here")
+
+library(openxlsx)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(here)
+```
+
+# Introduction
+
+The purpose of this tutorial is to provide a step-by-step guide to isolate nuclei from flash-frozen **Kidney synthetic assembloids** for **single-nucleus RNA sequencing**. Nuclei Isolation is the first step in many novel techniques including snNRAseq, single-nucleus assay for transposase-accessible chromatin sequencing, epigenomic analysis. Although based off of the 10X Genetics Chromium Nuclei Isolation Protocol, this tutorial is specifically for the use of Kidney synthetic assembloids for snRNAseq and includes alterations to maximize yield and quality. This tutorial will also include a guide on how to assess and grade the quality of the isolated nuclei as well as next steps after the initial isolation. 
+
+# Overview of Procedure
+
+![](`r here::here("NI 10X File", "modifications.png")`)
+
+[Link to 10X Protocol, starts on Page 25](https://cdn.10xgenomics.com/image/upload/v1660261285/support-documents/CG000505_Chromium_Nuclei_Isolation_Kit_UG_RevA.pdf)
+
+![](`r here::here("NI 10X File", "checkpoints.png")`)
+
+
+## Video Walk-Though of Procedure
+Future Link
+
+## PDF Download of Protocol
+
+[Link](https://cdn.10xgenomics.com/image/upload/v1660261285/support-documents/CG000505_Chromium_Nuclei_Isolation_Kit_UG_RevA.pdf) to Printable PDF of Protocol
+
+# Tips
+
+#### Critical to pellet the Assembloids prior to flash freezing in the sample tubes supplied by 10X chromium so it fits the pestle. 
+#### Work quickly helps with maintaining the quality of the nuclei.
+#### Depending on the starting material and step that your working on, it might be challenging to visualize the nuclei (especially after the debris removal step), so make sure to know the orientation of the tubes in the centrifuge. 
+#### Waiting 15 minutes at the end of the protoco help for the damaged nuclei to clump together so that mostly high-quality nuclei remain in the sample and are resuspended.
+
+# Key Modifications 
+## Multiple modifications have been made to optimize this protocol for the small tissue of assembloids.
+
+#### **Decreased** volume of Lysis Buffer needed (**100 µL**)
+#### **Decreased** number of pestle twists to dissociate tissue 
+##### We found that **5** was suffecient but **vissually confirmed the solution was absense of large chunks
+#### **Skip** the step to run solution through a column to remove large debris
+#### Perform **ALL** centrifugations in a **Round Bottom FACS tube** and a Swinging Bucket Rotor
+#### **Decreased** Wash Buffer volumes to 500 µL
+#### **Final** resuspension in 100 µL
+
+# Consumables
+
+```{r class.source = 'fold-show', echo=FALSE}
+
+# Read the data
+df3 <- read.xlsx(here("NI 10X File", "consumables.xlsx"))
+
+df3_clean <- df3 %>%
+  mutate(across(1, ~ ifelse(is.na(.), "", .))) %>% 
+  mutate(across(2, ~ ifelse(is.na(.), "", .))) %>% 
+  mutate(across(3, ~ ifelse(is.na(.), "", .))) %>% 
+  mutate(across(4, ~ ifelse(is.na(.), "", .))) %>% 
+  mutate(across(5, ~ ifelse(is.na(.), "", .)))
+
+df4 <- df3_clean %>%
+  dplyr::rename_with(~ gsub("\\.", " ", .x)) %>% 
+  kbl(booktabs = TRUE, align = "c", escape = FALSE) %>%  # escape = FALSE allows HTML
+  kable_styling() %>%
+  # Single, styled header
+  add_header_above(
+    c("<span style='color:#990000; font-size:18pt;'>List of Consumables</span>" = ncol(df3_clean)),
+    escape = FALSE
+  ) %>%
+  column_spec(1, bold = TRUE, color = "#990000") %>%  
+  column_spec(1:ncol(df3_clean), width = "12em") %>% 
+  row_spec(1:nrow(df3_clean), align = "c") %>%
+  row_spec(12, extra_css = "border-bottom: 3px solid black;") %>%
+  row_spec(14, extra_css = "border-bottom: 3px solid black;") %>% 
+  row_spec(6, bold = TRUE) 
+
+df4
+```
+
+## Equipment
+
+### **Eppendorf 5810R Refrigerated Centrifuge**
+
+[Link](https://www.eppendorf.com/in-en/Products/Centrifugation/Multipurpose-Centrifuges/Centrifuge-5810-5810R-p-5811000015) to product page.
+
+## Buffer Set-Up
+
+```{r class.source = 'fold-show', echo=FALSE}
+
+# Read the data
+df <- read.xlsx(here("NI 10X File", "buffers_jwn.xlsx"))
+
+df2 <- df %>%
+  dplyr::rename_with(~ gsub("\\.", " ", .x)) %>% 
+  kbl(booktabs = TRUE, align = "c") %>%
+  add_header_above(
+    c("<span style='color:#990000; font-size:18pt;'>Buffer Setup</span>" = ncol(df)),
+    escape = FALSE
+  ) %>%
+  kable_styling() %>%
+  column_spec(1, bold = TRUE, color = "#990000") %>%  
+  column_spec(1:ncol(df), width = "12em") %>% 
+  row_spec(1:nrow(df), align = "c") %>%     
+  row_spec(3:nrow(df), align = "c")
+
+df2
+```
+
+
+<input type="checkbox"> 1. Start with the Wash and Resuspension Buffer, which is composed of the **1X PBS** and **10% BSA solutions** that are *not included in the kit*. Generally, make a stock of 100 mL of each and keep chilled at 4°C. Refer to the table above and the instructions for components and amounts.
+
+<div style="margin-left: 30px;">
+  <input type="checkbox"> 1X PBS: Dilute 10 mL into 90 mL of Ultra-Pure Water. Invert to mix thoroughly.<br>
+  <input type="checkbox"> 10% BSA: 10 grams of powder BSA to 100 mL of Ultra-Pure Water. Mix gently by swirling to prevent excess frothing.
+</div>
+
+<input type="checkbox"> 2. Next, retrieve all components of the 10X Nuclei Isolation Kit, which should include the **Lysis Reagent, Debris Removal Reagent, Reducing Agent B, Surfactant A, and RNAse Inhibitor**. Also retrieve the Sample Dissociation Tube from the room temperature Consumables portion. 
+
+<input type="checkbox"> 3. Place everything except for the Reducing Agent B on ice and begin to prepare the buffers. After Reducing Agent B thaws and everything is briefly vortexed, begin preparing the buffers.
+
+<input type="checkbox"> 4. Make an **appropriate amount of buffer** for the number of samples that you are going to be isolating nuclei from
+
+
+```{r class.source = 'fold-show', echo=FALSE}
+
+df <- read.xlsx(here("NI 10X File", "buffer_lysis.xlsx"))
+
+df_clean <- df %>%
+  mutate(
+    across(1:2, ~ ifelse(is.na(.), "", .))        # remove NA in col 1 & 2
+  )
+
+df2 <- df_clean %>%
+  dplyr::rename_with(~ gsub("\\.", " ", .x)) %>% 
+  kbl(booktabs = TRUE, align = "c") %>%
+    add_header_above(
+    c("<span style='color:#990000; font-size:18pt;'>Lysis Buffer</span>" = ncol(df_clean)),
+    escape = FALSE) %>%
+  kable_styling() %>%
+  column_spec(
+    1,
+    bold = TRUE,
+    color = "#990000",
+    extra_css = "font-size: 30px;",
+    width = "8em"               # ← narrower first column
+  ) %>%
+  column_spec(
+    2:ncol(df_clean),
+    width = "12em"              # ← wider other columns
+  ) %>%
+  row_spec(1:nrow(df_clean), extra_css = "vertical-align: middle;") %>%
+  row_spec(nrow(df_clean), bold = TRUE)
+
+df2
+```
+
+
+```{r class.source = 'fold-show', echo=FALSE}
+
+df <- read.xlsx(here("NI 10X File", "buffer_debris.xlsx"))
+df_clean <- df %>%
+  mutate(
+    across(1:2, ~ ifelse(is.na(.), "", .))        # remove NA in col 1 & 2
+  )
+
+df2 <- df_clean %>%
+  dplyr::rename_with(~ gsub("\\.", " ", .x)) %>% 
+  kbl(booktabs = TRUE, align = "c") %>%
+      add_header_above(
+    c("<span style='color:#990000; font-size:18pt;'>Debris Removal Buffer</span>" = ncol(df_clean)),
+    escape = FALSE) %>%
+  kable_styling() %>%
+  column_spec(
+    1,
+    bold = TRUE,
+    color = "#990000",
+    extra_css = "font-size: 30px;",
+    width = "8em"               # ← narrower first column
+  ) %>%
+  column_spec(
+    2:ncol(df_clean),
+    width = "12em"              # ← wider other columns
+  ) %>%
+  row_spec(1:nrow(df_clean), extra_css = "vertical-align: middle;") %>%
+  row_spec(nrow(df_clean), bold = TRUE)
+
+df2
+```
+
+
+
+```{r class.source = 'fold-show', echo=FALSE}
+
+df <- read.xlsx(here("NI 10X File", "buffer_wash.xlsx"))
+
+df_clean <- df %>%
+  mutate(
+    across(1:2, ~ ifelse(is.na(.), "", .))        # remove NA in col 1 & 2
+  )
+
+df2 <- df_clean %>%
+  dplyr::rename_with(~ gsub("\\.", " ", .x)) %>% 
+  kbl(booktabs = TRUE, align = "c") %>%
+        add_header_above(
+    c("<span style='color:#990000; font-size:18pt;'>Wash and Resuspension Buffer</span>" = ncol(df_clean)),
+    escape = FALSE) %>%
+  kable_styling() %>%
+  column_spec(
+    1,
+    bold = TRUE,
+    color = "#990000",
+    extra_css = "font-size: 30px;",
+    width = "8em"               # ← narrower first column
+  ) %>%
+  column_spec(
+    2:ncol(df_clean),
+    width = "12em"              # ← wider other columns
+  ) %>%
+  row_spec(1:nrow(df_clean), extra_css = "vertical-align: middle;") %>%
+  row_spec(nrow(df_clean), bold = TRUE)
+
+df2
+```
+
+
+<input type="checkbox"> 5. Keep all completed buffers **labeled and on ice**. Pre-chill the centrifuge to **4°C**.
+
+# Main Procedure
+
+<input type="checkbox"> 1. Retrieve **Kidney Synthetic Assembloids** from the -80°C storage and place on ice and let it thaw.
+
+<input type="checkbox"> 2. Add 100 µL of the **Lysis Buffer** as soon as the tube is thawed.
+
+<input type="checkbox"> 3. Then using the **green pestle** provided in the room-temperature pack, grind up the tissue, pressing down and **twisting 5 times** (avoiding the generation of bubbles) or until the solution is smooth with no visible chunks. 
+
+<input type="checkbox"> 4. Next, add 100 µL of the **Lysis buffer** and pipette up and down, making sure that there are no chunks.
+
+<input type="checkbox"> 5. Pre-coat **round bottom FACS tubes** by pipetting 100 of 10% BSA into tube, swirl around and then discard. Transfer the nuclei solution into the **round bottom FACS tube**.  
+
+<input type="checkbox"> 6. Spin the sample in a **swinging bucket centrifuge** at 500 rcf for 3 min at 4°C.
+
+<input type="checkbox"> 7. Next, **remove the supernatant**, being careful to avoid the pellet. OK to leave a minimal volume of solution in the tube (~100 µL).
+
+<input type="checkbox"> 8. **Re-suspend the pellet** with 500 µL of the Debris Removal Buffer. Spin at 700 rcf for 10 minutes at 4°C.
+
+<input type="checkbox"> 9. **Remove the supernatant** again and **resuspend in 500 µL** of the Wash and Resuspension Buffer. Spin at 500 rcf for 5 minutes, 4 °C. **Remove supernatant**.
+
+<input type="checkbox"> 10. **Repeat** step 9.
+
+<input type="checkbox"> 11. Finally, **resuspend the. nuclei pellet in 100 µL** of the Final Wash and Resuspension Buffer. Vortex the solution for 3 seconds and let it sit undisturbed for 15 minutes.
+
+Now, depending on QC or following uses, use the concentrated solution.
+
+# Expected Outcomes
+
+#### In our hands, we started with **~400K nuclei** from 5 Mature Kidney Synthetic Assembloids (quantified after initial lysis)
+#### After completing this protocol, we ended up with **~250K nuclei** in 100 µL at a concentration of **2,025 nuc/µL**
+##### This means that the **each quadrant** on the hemocytometer had approcimately **20 healthy nuclei**
+
+## Nuclei Count with Light Microscope:
+
+With the nuclei solution, add **2 µL of nuclei** to **18 µL of Trypan Blue**, pipetting up and down into the TB at least 10 times to mix thoroughly. Note that while Trypan Blue does not accumulate in intact cells, the compound does concentrate within the exposed nuclei, which is what we will be checking for. 
+
+Add **10 µL to one of the channels on a hemocytometer**, making sure the solution fills the space. Observe on a light microscope, counting to get an approximation and assessment of nuclei quality.
+
+Microscope used in this procedure: 
+
+<img src="`r here::here('NI 10X File', 'counting_app.jpg')`" width="50%">
+
+[link to hemocytometer counter app](https://apps.apple.com/us/app/cell-counter-calculator/id6670227470)
+
+From this procedure, the average expected nuclei concentration count is: 500 nuclei per microliter 
+This is approximately 20 to 40 nuclei per quadrant in the hemocytometer.
+
+## Nuclei Quality Check:
+
+Priority Check: 
+
+1. No clumps, with an even distribution
+
+2. Quality: 
+
+**A grade Nuclei**: Good, circular shape with no blebbing, halo of Trypan Blue around the edges that suggest an undisturbed nuclear envelope. No aggregation. 
+  
+**B grade Nuclei**: Slightly irregular shapes, still has the halo but less bright or more uneven 
+  
+**C grade Nuclei**: Losing more of normal shape, small blebbing, paler color
+
+**D/F grade Nuclei**: Complete loss of structure, no blue halo, aggregates
+
+Example of a graded sample: 
+
+![](`r here::here("NI 10X File", "A.png")`)
+
+Example of grading with reasoning. Note: this is an image of an aggregate that was included because of a wide variety of quality, but as a general rule aggregates indicate a low quality overall sample. 
+
+![](`r here::here("NI 10X File", "B.png")`)
+
+Example of a sample viewed at 10x and 40x, grading the individual nuclei quality is easier at 40x but it is recommended to conduct overall sample quality checks at 10x magnification.
+
+![](`r here::here("NI 10X File", "C.png")`)
